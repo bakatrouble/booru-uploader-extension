@@ -1,0 +1,39 @@
+{
+  "name": "booru-uploader",
+  "description": "manifest.json description",
+  "private": true,
+  "version": "0.0.2",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "compile": "vue-tsc --noEmit",
+    "postinstall": "wxt prepare",
+    "sign": "pnpm build:firefox && dotenv cross-var 'web-ext sign --channel=unlisted'"
+  },
+  "dependencies": {
+    "@mdi/js": "^7.4.47",
+    "@wxt-dev/auto-icons": "^1.0.2",
+    "mdi-vue": "^3.0.13",
+    "sass-embedded": "^1.89.2",
+    "uuidv7": "^1.0.2",
+    "vue": "^3.5.13",
+    "wait-queue": "^1.1.4"
+  },
+  "devDependencies": {
+    "@wxt-dev/module-vue": "^1.0.2",
+    "cross-var": "^1.1.0",
+    "dotenv-cli": "^9.0.0",
+    "typescript": "5.6.3",
+    "vue-tsc": "^2.2.10",
+    "web-ext": "^8.9.0",
+    "wxt": "^0.20.6"
+  },
+  "webExt": {
+    "sourceDir": ".output/firefox-mv2"
+  }
+}
