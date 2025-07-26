@@ -2,7 +2,7 @@
   "name": "booru-uploader",
   "description": "manifest.json description",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.0.7",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -18,7 +18,12 @@
   "dependencies": {
     "@mdi/js": "^7.4.47",
     "@wxt-dev/auto-icons": "^1.0.2",
+    "browser-image-hash": "^0.0.5",
+    "canvas": "^3.1.2",
+    "file64": "^1.0.5",
+    "idb": "^8.0.3",
     "mdi-vue": "^3.0.13",
+    "pica": "^9.0.1",
     "sass-embedded": "^1.89.2",
     "uuidv7": "^1.0.2",
     "vue": "^3.5.13",

@@ -1,25 +1,24 @@
 export class Queue<T> {
     items: T[] = [];
-    private listeners: (() => any)[] = [];
+    private listener?: (item: T) => any;
 
     put(item: T): void {
         this.items.push(item);
-        while (true) {
-            const listener = this.listeners.shift();
-            if (!listener)
-                break;
-            listener();
+        if (this.listener) {
+            this.listener(this.items[0]);
+            this.listener = undefined;
         }
     }
 
     wait(): Promise<T> {
+        if (this.listener) {
+            throw new Error('Wait conflict');
+        }
         return new Promise(resolve => {
             if (this.items.length > 0) {
                 resolve(this.items[0]);
             } else {
-                this.listeners.push(() => {
-                    resolve(this.items[0]);
-                });
+                this.listener = resolve;
             }
         });
     }

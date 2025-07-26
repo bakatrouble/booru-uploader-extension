@@ -2,15 +2,26 @@
 
 import TaskList from '@/components/TaskList.vue';
 import SectionHeader from '@/components/SectionHeader.vue';
+import { testImage } from '@/entrypoints/popup/testImage';
 
 const queued = ref<Task[]>([]);
 const processed = ref<Task[]>([]);
 const port = ref<Browser.runtime.Port>();
 
+const isDev = import.meta.env.DEV;
+
+const sendTestImage = async () => {
+    console.log(await browser.runtime.sendMessage({
+        type: 'photoBase64',
+        data: testImage,
+        endpoint: 'https://bots.bakatrouble.me/bots_rpc/nsfw/',
+    }));
+}
+
 onMounted(() => {
     port.value = browser.runtime.connect();
     port.value.onMessage.addListener((message) => {
-        if (message.type === 'task_list') {
+        if (message.type === 'taskList') {
             queued.value = message.queued;
             processed.value = message.processed;
         }
@@ -29,6 +40,7 @@ onMounted(() => {
         :tasks="processed"
         @remove-task="id => port?.postMessage({ type: 'removeTask', id })"
     />
+    <button v-if="isDev" @click="sendTestImage">test</button>
 </template>
 
 <style scoped lang="sass">

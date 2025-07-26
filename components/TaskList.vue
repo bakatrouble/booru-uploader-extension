@@ -1,9 +1,10 @@
 <script setup lang="ts">
 
 import Spinner from '@/components/Spinner.vue';
+import type { UploadTask } from '@/entrypoints/background';
 
 const { tasks } = defineProps<{
-    tasks: Task[];
+    tasks: UploadTask[];
 }>();
 
 const emit = defineEmits<{
@@ -14,7 +15,7 @@ const emit = defineEmits<{
 <template>
     <div v-if="tasks.length > 0" class="task-list">
         <div v-for="task in tasks" class="task-cell">
-            <img v-if="task.method === 'photo.file'" :src="task.file!" />
+            <img v-if="task.type === 'photoFile'" :src="task.file!" />
             <div class="task-status-container">
                 <spinner v-if="['pending', 'processing'].includes(task.status)" size="30" color="white" class="task-spinner" />
                 <span>{{ task.status }}</span>

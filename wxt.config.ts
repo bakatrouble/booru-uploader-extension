@@ -15,10 +15,5 @@ export default defineConfig({
                 id: 'uploader@bakatrouble.me',
             },
         },
-        externally_connectable: {
-            ids: [
-                'booru@bakatrouble.me',
-            ],
-        },
     },
 });

@@ -1,16 +1,11 @@
 import { uuidv7 } from 'uuidv7';
-import { Queue } from '@/entrypoints/queue';
+import { IDBPDatabase, openDB } from 'idb';
+import { Queue } from './utils/queue';
+import { base64ToBlob, blobToBase64 } from 'file64';
+import { ImageHash, phash } from './utils/imagehash-web';
+import { DifferenceHashBuilder, Hash } from 'browser-image-hash';
 
 type Port = Browser.runtime.Port;
-
-type WsMessage = {
-    type: 'task_list',
-    queued: Task[],
-    processed: Task[],
-} | {
-    type: 'task_update',
-    task: Task,
-};
 
 type PortMessage = {
     type: 'removeTask',
@@ -18,17 +13,21 @@ type PortMessage = {
 }
 
 type ExternalMessage = {
-    type: 'photoBase64';
-    data: string;
-} | {
-    type: 'photoUrl';
-    url: string;
-} | {
-    type: 'gif';
-    url: string;
-};
+    endpoint: string;
+} & (
+    {
+        type: 'photoBase64';
+        data: string;
+    } | {
+        type: 'photoUrl';
+        url: string;
+    } | {
+        type: 'gif';
+        url: string;
+    }
+);
 
-type UploadTask = {
+export type UploadTask = {
     id: string;
     endpoint: string;
     retries: number;
@@ -36,7 +35,7 @@ type UploadTask = {
 } & (
     {
         type: 'photoFile';
-        base64: string;
+        file?: string;
     } |
     {
         type: 'photoUrl';
@@ -53,49 +52,95 @@ class Uploader {
     processedTasks: UploadTask[] = [];
     ports = new Set<Port>();
     processingDisplaying = false;
+    db?: IDBPDatabase;
+    imageHashes: Record<string, Set<string>> = {};
 
     constructor() {
         browser.browserAction.setBadgeBackgroundColor({ color: 'teal' });
 
         browser.runtime.onMessageExternal
-            .addListener(message => this.handleExternalMessage(message));
-        browser.runtime.onConnect.addListener(port => this.handlePortConnection(port))
+            .addListener((message, _, sendResponse) => this.handleExternalMessage(message, sendResponse));
+        browser.runtime.onMessage
+            .addListener((message, _, sendResponse) => this.handleExternalMessage(message, sendResponse));
+        browser.runtime.onConnect
+            .addListener(port => this.handlePortConnection(port))
+
+        openDB('booru-uploader', 2, {
+            upgrade(db) {
+                db.createObjectStore('images');
+            }
+        }).then(async db => {
+            this.db = db
+            await db.clear('images');
+        });
 
         // noinspection JSIgnoredPromiseFromCall
         this.worker();
     }
 
-    handleExternalMessage(message: ExternalMessage) {
-        const base = {
-            id: uuidv7(),
-            endpoint: 'https://example.com/upload',
-            retries: 0,
-            status: 'queued',
-        };
-        switch (message.type) {
-            case 'photoBase64':
-                this.queuedTasks.put({
-                    type: 'photoFile',
-                    ...base,
-                    base64: message.data,
-                } as UploadTask);
-                break;
-            case 'photoUrl':
-                this.queuedTasks.put({
-                    type: 'photoUrl',
-                    ...base,
-                    url: message.url,
-                } as UploadTask);
-                break;
-            case 'gif':
-                this.queuedTasks.put({
-                    type: 'gif',
-                    ...base,
-                    url: message.url,
-                } as UploadTask);
-                break;
-        }
-        this.sendUpdateToPorts();
+    async getHashes(endpoint: string) {
+        if (this.imageHashes[endpoint])
+            return;
+        this.imageHashes[endpoint] = new Set();
+        const response = await this.jsonRpcRequest(
+            endpoint,
+            'get_hashes',
+        );
+        this.imageHashes[endpoint] = new Set((await response.json()).result);
+    }
+
+    handleExternalMessage(message: ExternalMessage, sendResponse: (response: any) => void) {
+        (async () => {
+            await this.getHashes(message.endpoint);
+
+            const base = {
+                id: uuidv7(),
+                endpoint: message.endpoint,
+                retries: 0,
+                status: 'queued',
+            };
+            let result: true | 'duplicate' = true;
+            switch (message.type) {
+                case 'photoBase64':
+                    const blob = await base64ToBlob(`data:image/jpeg;base64,${message.data}`);
+                    const blobDataUrl = new URL(URL.createObjectURL(blob));
+                    if (this.imageHashes[message.endpoint]) {
+                        const builder = new DifferenceHashBuilder();
+                        const hash = await builder.build(blobDataUrl);
+                        console.log(hash.toString());
+                        if (this.imageHashes[message.endpoint].has(hash.toString())) {
+                            result = 'duplicate';
+                            break;
+                        }
+                    }
+                    await this.db?.put('images', blob, base.id);
+                    this.queuedTasks.put({
+                        type: 'photoFile',
+                        ...base,
+                        file: URL.createObjectURL(blob),
+                    } as UploadTask);
+                    break;
+                case 'photoUrl':
+                    this.queuedTasks.put({
+                        type: 'photoUrl',
+                        ...base,
+                        url: message.url,
+                    } as UploadTask);
+                    break;
+                case 'gif':
+                    this.queuedTasks.put({
+                        type: 'gif',
+                        ...base,
+                        url: message.url,
+                    } as UploadTask);
+                    break;
+            }
+            this.sendUpdateToPorts();
+            sendResponse({
+                result,
+            });
+        })();
+        return true;
     }
 
     handlePortConnection(port: Port) {
@@ -128,20 +173,25 @@ class Uploader {
         });
     }
 
-    async worker() {
-        const createFetchParams = (method: string, params: any[]) => ({
-            headers: {
-                'content-type': 'application/json',
-            },
-            method: 'POST',
-            body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 0,
-                method,
-                params,
-            }),
-        });
+    jsonRpcRequest(endpoint: string, method: string, ...params: any[]) {
+        return fetch(
+            endpoint,
+            {
+                headers: {
+                    'content-type': 'application/json',
+                },
+                method: 'POST',
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 0,
+                    method,
+                    params,
+                }),
+            }
+        )
+    }
 
+    async worker() {
         // noinspection InfiniteLoopJS
         while (true) {
             const task = await this.queuedTasks.wait();
@@ -162,34 +212,43 @@ class Uploader {
                 let response;
                 switch (task.type) {
                     case 'photoFile': {
-                        const r = await fetch(
+                        const blob = await this.db?.get('images', task.id);
+                        const base64 = (await blobToBase64(blob)).split(',')[1];
+                        const r = await this.jsonRpcRequest(
                             task.endpoint,
-                            createFetchParams('post_photo', [task.base64, true])
+                            'post_photo',
+                            base64,
+                            true,
                         );
                         response = await r.json();
                         break;
                     }
                     case 'photoUrl': {
-                        const r = await fetch(
+                        const r = await this.jsonRpcRequest(
                             task.endpoint,
-                            createFetchParams('post_photo', [task.url, false])
+                            'post_photo',
+                            task.url,
+                            false,
                         );
                         response = await r.json();
                         break;
                     }
                     case 'gif': {
-                        const r = await fetch(
+                        const r = await this.jsonRpcRequest(
                             task.endpoint,
-                            createFetchParams('post_gif', [task.url])
+                            'post_gif',
+                            task.url,
                         );
                         response = await r.json();
                         break;
                     }
                 }
-                if (response.status === true) {
-                    task.status = 'completed';
-                } else if (response.status === 'duplicate') {
+                if (response.result.status === 'duplicate') {
+                    this.imageHashes[task.endpoint]?.add(response.result.hash);
                     task.status = 'duplicate';
+                } else if (response.result.status === 'ok') {
+                    this.imageHashes[task.endpoint]?.add(response.result.hash);
+                    task.status = 'completed';
                 } else {
                     task.status = 'failed';
                 }
@@ -224,131 +283,6 @@ class Uploader {
 // noinspection JSUnusedGlobalSymbols
 export default defineBackground({
     main: () => {
-        browser.browserAction.setBadgeBackgroundColor({ color: 'teal' })
-
-        let queuedTasks: Task[] = [];
-        let processedTasks: Task[] = [];
-        const ports: Browser.runtime.Port[] = [];
-
-        let ws: WebSocket;
-        let lastCount = 0;
-
-        const connect = () => {
-            ws = new WebSocket('ws://localhost:5000/ws');
-            ws.onopen = () => {
-                console.log('WebSocket connection established');
-                ws.send(JSON.stringify({ type: 'get_tasks' }));
-            };
-            ws.onclose = (e) => {
-                console.log('WebSocket connection closed:', e);
-                setTimeout(() => connect(), 500);
-            }
-            ws.onmessage = (event) => {
-                const data: WsMessage = JSON.parse(event.data);
-                console.log('Received data:', data);
-                switch (data.type) {
-                    case 'task_list':
-                        queuedTasks = data.queued;
-                        processedTasks = data.processed;
-                        break;
-                    case 'task_update':
-                        switch (data.task.status) {
-                            case 'queued':
-                            case 'processing': {
-                                const idx = queuedTasks.findIndex(task => task.id === data.task.id);
-                                if (idx !== -1) {
-                                    queuedTasks[idx] = data.task;
-                                } else {
-                                    queuedTasks.push(data.task);
-                                }
-                                break;
-                            }
-                            case 'completed':
-                            case 'duplicate':
-                            case 'failed': {
-                                const idx = queuedTasks.findIndex(task => task.id === data.task.id);
-                                if (idx !== -1) {
-                                    queuedTasks.splice(idx, 1);
-                                }
-                                const processedIdx = processedTasks.findIndex(task => task.id === data.task.id);
-                                if (processedIdx !== -1) {
-                                    processedTasks[processedIdx] = data.task;
-                                } else {
-                                    processedTasks.unshift(data.task);
-                                }
-                                break;
-                            }
-                            case 'removed': {
-                                const queuedIdx = queuedTasks.findIndex(task => task.id === data.task.id);
-                                if (queuedIdx !== -1) {
-                                    queuedTasks.splice(queuedIdx, 1);
-                                }
-                                const processedIdx = processedTasks.findIndex(task => task.id === data.task.id);
-                                if (processedIdx !== -1) {
-                                    processedTasks.splice(processedIdx, 1);
-                                }
-                                break;
-                            }
-                        }
-                        break;
-                }
-
-                const queueEmpty = queuedTasks.length === 0;
-                const queueWasEmpty = lastCount === 0;
-                browser.browserAction.setBadgeText({
-                    text: queueEmpty ? '' : `${queuedTasks.length}`,
-                });
-                if (queueEmpty && !queueWasEmpty || !queueEmpty && queueWasEmpty) {
-                    browser.browserAction.setIcon({
-                        path: browser.runtime.getURL(queueEmpty ? '/default-icon.svg' : '/loader-icon.svg'),
-                    });
-                }
-                lastCount = queuedTasks.length;
-
-                ports.forEach(port => {
-                    port.postMessage({
-                        type: 'task_list',
-                        queued: queuedTasks,
-                        processed: processedTasks,
-                    });
-                })
-            }
-        }
-        connect();
-
-        if (import.meta.env.DEV) {
-            const popupUrl = browser.runtime.getURL('/popup.html');
-            browser.tabs.create({
-                url: popupUrl,
-            });
-        }
-
-        browser.runtime.onConnect.addListener(port => {
-            ports.push(port);
-
-            port.postMessage({
-                type: 'task_list',
-                queued: queuedTasks,
-                processed: processedTasks,
-            });
-
-            port.onMessage.addListener((msg: PortMessage) => {
-                switch (msg.type) {
-                    case 'removeTask':
-                        ws.send(JSON.stringify({
-                            type: 'remove_task',
-                            id: msg.id,
-                        }));
-                        break;
-                }
-            });
-
-            port.onDisconnect.addListener(port => {
-                const idx = ports.indexOf(port);
-                if (idx !== -1) {
-                    ports.splice(idx, 1);
-                }
-            });
-        })
+        new Uploader();
     }
 });
