@@ -24,4 +24,5 @@ web-ext.config.ts
 *.sln
 *.sw?
 
-web-ext-artifacts
+/web-ext-artifacts
+/.env

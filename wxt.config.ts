@@ -44,6 +44,11 @@ export default defineConfig({
             },
         },
     },
+    zip: {
+        excludeSources: [
+            'web-ext-artifacts/**/*',
+        ],
+    },
     vite: () => ({
         optimizeDeps: {
             exclude: ['pyodide'],
