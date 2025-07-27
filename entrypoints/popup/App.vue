@@ -3,9 +3,10 @@
 import TaskList from '@/components/TaskList.vue';
 import SectionHeader from '@/components/SectionHeader.vue';
 import { testImage } from '@/entrypoints/popup/testImage';
+import type { UploadTask } from '@/entrypoints/background';
 
-const queued = ref<Task[]>([]);
-const processed = ref<Task[]>([]);
+const queued = ref<UploadTask[]>([]);
+const processed = ref<UploadTask[]>([]);
 const port = ref<Browser.runtime.Port>();
 
 const isDev = import.meta.env.DEV;

@@ -2,8 +2,7 @@ import { uuidv7 } from 'uuidv7';
 import { IDBPDatabase, openDB } from 'idb';
 import { Queue } from './utils/queue';
 import { base64ToBlob, blobToBase64 } from 'file64';
-import { ImageHash, phash } from './utils/imagehash-web';
-import { DifferenceHashBuilder, Hash } from 'browser-image-hash';
+import { loadPyodide, PyodideInterface } from 'pyodide';
 
 type Port = Browser.runtime.Port;
 
@@ -54,6 +53,8 @@ class Uploader {
     processingDisplaying = false;
     db?: IDBPDatabase;
     imageHashes: Record<string, Set<string>> = {};
+    pyodide?: PyodideInterface;
+    computeHashPackage: any;
 
     constructor() {
         browser.browserAction.setBadgeBackgroundColor({ color: 'teal' });
@@ -72,6 +73,19 @@ class Uploader {
         }).then(async db => {
             this.db = db
             await db.clear('images');
+        });
+
+        // noinspection TypeScriptValidateTypes
+        const assetsDir = browser.runtime.getURL('/pyodide');
+        loadPyodide({
+            indexURL: assetsDir,
+            packageCacheDir: `${assetsDir}/static`,
+        }).then(async pyodide => {
+            this.pyodide = pyodide;
+            await pyodide.loadPackage(['Pillow', 'numpy', 'scipy', 'openblas']);
+            const scripts = await fetch(`${browser.runtime.getURL('/pyodide/pyscripts.zip')}`);
+            pyodide.unpackArchive(await scripts.arrayBuffer(), 'zip');
+            this.computeHashPackage = pyodide.pyimport('compute_hash');
         });
 
         // noinspection JSIgnoredPromiseFromCall
@@ -103,10 +117,8 @@ class Uploader {
             switch (message.type) {
                 case 'photoBase64':
                     const blob = await base64ToBlob(`data:image/jpeg;base64,${message.data}`);
-                    const blobDataUrl = new URL(URL.createObjectURL(blob));
                     if (this.imageHashes[message.endpoint]) {
-                        const builder = new DifferenceHashBuilder();
-                        const hash = await builder.build(blobDataUrl);
+                        const hash = await this.computeHash(blob);
                         console.log(hash.toString());
                         if (this.imageHashes[message.endpoint].has(hash.toString())) {
                             result = 'duplicate';
@@ -189,6 +201,13 @@ class Uploader {
                 }),
             }
         )
+    }
+
+    async computeHash(image: Blob): Promise<string> {
+        const buffer = await image.arrayBuffer();
+        const result = await this.computeHashPackage.compute_hash(buffer);
+        console.log(result);
+        return result;
     }
 
     async worker() {
