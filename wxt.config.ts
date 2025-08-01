@@ -1,4 +1,4 @@
-import { defineConfig } from 'wxt';
+import { defineConfig, WxtViteConfig } from 'wxt';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readdirSync } from 'node:fs';
@@ -25,7 +25,7 @@ const viteStaticCopyPyodide = () => {
                 dest: "pyodide",
             },
         ],
-    });
+    }) as any;
 }
 
 // See https://wxt.dev/api/config.html
@@ -38,6 +38,7 @@ export default defineConfig({
         baseIconPath: 'public/default-icon.svg',
     },
     manifest: {
+        permissions: ['storage'],
         browser_specific_settings: {
             gecko: {
                 id: 'uploader@bakatrouble.me',
@@ -49,7 +50,7 @@ export default defineConfig({
             'web-ext-artifacts/**/*',
         ],
     },
-    vite: () => ({
+    vite: (): WxtViteConfig => ({
         optimizeDeps: {
             exclude: ['pyodide'],
         },

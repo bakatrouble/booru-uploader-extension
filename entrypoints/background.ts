@@ -1,8 +1,9 @@
 import { uuidv7 } from 'uuidv7';
 import { IDBPDatabase, openDB } from 'idb';
-import { Queue } from './utils/queue';
+import { Queue } from '@/utils/queue';
 import { base64ToBlob, blobToBase64 } from 'file64';
 import { loadPyodide, PyodideInterface } from 'pyodide';
+import { isDev } from '@/utils/env';
 
 type Port = Browser.runtime.Port;
 
@@ -88,6 +89,12 @@ class Uploader {
             this.computeHashPackage = pyodide.pyimport('compute_hash');
         });
 
+        if (isDev) {
+            browser.tabs.create({
+                url: browser.runtime.getURL('popup.html'),
+            });
+        }
+
         // noinspection JSIgnoredPromiseFromCall
         this.worker();
     }
@@ -117,15 +124,20 @@ class Uploader {
             switch (message.type) {
                 case 'photoBase64':
                     const blob = await base64ToBlob(`data:image/jpeg;base64,${message.data}`);
+                    const task = {
+                        type: 'photoFile',
+                        ...base,
+                        file: URL.createObjectURL(blob),
+                    } as UploadTask;
+                    await this.db?.put('images', blob, base.id);
                     if (this.imageHashes[message.endpoint]) {
                         const hash = await this.computeHash(blob);
-                        console.log(hash.toString());
                         if (this.imageHashes[message.endpoint].has(hash.toString())) {
-                            result = 'duplicate';
+                            task.status = result = 'duplicate';
+                            this.processedTasks.unshift(task);
                             break;
                         }
                     }
-                    await this.db?.put('images', blob, base.id);
                     this.queuedTasks.put({
                         type: 'photoFile',
                         ...base,
