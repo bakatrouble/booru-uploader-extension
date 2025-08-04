@@ -4,8 +4,8 @@ import { Queue } from '@/utils/queue';
 import { base64ToBlob, blobToBase64 } from 'file64';
 import { loadPyodide, PyodideInterface } from 'pyodide';
 import { isDev } from '@/utils/env';
-
-type Port = Browser.runtime.Port;
+import { NotificationLevel } from '@/utils/enums';
+import { ContextMenuManager } from '@/utils/context-menu';
 
 type PortMessage = {
     type: 'removeTask',
@@ -13,18 +13,23 @@ type PortMessage = {
 }
 
 type ExternalMessage = {
-    endpoint: string;
-} & (
+    type: 'updateContextMenu' | 'getUploadLinks',
+} | (
     {
-        type: 'photoBase64';
-        data: string;
-    } | {
-        type: 'photoUrl';
-        url: string;
-    } | {
-        type: 'gif';
-        url: string;
-    }
+        type: 'upload',
+        endpoint: string;
+    } & (
+        {
+            method: 'photoBase64';
+            data: string;
+        } | {
+            method: 'photoUrl';
+            url: string;
+        } | {
+            method: 'gif';
+            url: string;
+        }
+    )
 );
 
 export type UploadTask = {
@@ -47,23 +52,24 @@ export type UploadTask = {
     }
 );
 
-class Uploader {
+export class Uploader {
     queuedTasks = new Queue<UploadTask>();
     processedTasks: UploadTask[] = [];
-    ports = new Set<Port>();
+    ports = new Set<browser.runtime.Port>();
     processingDisplaying = false;
     db?: IDBPDatabase;
     imageHashes: Record<string, Set<string>> = {};
     pyodide?: PyodideInterface;
     computeHashPackage: any;
+    contextMenuManager: ContextMenuManager;
 
     constructor() {
         browser.browserAction.setBadgeBackgroundColor({ color: 'teal' });
 
         browser.runtime.onMessageExternal
-            .addListener((message, _, sendResponse) => this.handleExternalMessage(message, sendResponse));
+            .addListener((message, sender) => this.handleExternalMessage(message, sender));
         browser.runtime.onMessage
-            .addListener((message, _, sendResponse) => this.handleExternalMessage(message, sendResponse));
+            .addListener((message) => this.handleExternalMessage(message, {}));
         browser.runtime.onConnect
             .addListener(port => this.handlePortConnection(port))
 
@@ -95,6 +101,9 @@ class Uploader {
             });
         }
 
+
+        this.contextMenuManager = new ContextMenuManager(this);
+
         // noinspection JSIgnoredPromiseFromCall
         this.worker();
     }
@@ -110,64 +119,118 @@ class Uploader {
         this.imageHashes[endpoint] = new Set((await response.json()).result);
     }
 
-    handleExternalMessage(message: ExternalMessage, sendResponse: (response: any) => void) {
-        (async () => {
-            await this.getHashes(message.endpoint);
+    async handleMessage(message: ExternalMessage, tabId?: number) {
+        if (message.type !== 'upload')
+            return;
 
-            const base = {
-                id: uuidv7(),
-                endpoint: message.endpoint,
-                retries: 0,
-                status: 'queued',
-            };
-            let result: true | 'duplicate' = true;
-            switch (message.type) {
-                case 'photoBase64':
-                    const blob = await base64ToBlob(`data:image/jpeg;base64,${message.data}`);
-                    const task = {
-                        type: 'photoFile',
-                        ...base,
-                        file: URL.createObjectURL(blob),
-                    } as UploadTask;
-                    await this.db?.put('images', blob, base.id);
-                    if (this.imageHashes[message.endpoint]) {
-                        const hash = await this.computeHash(blob);
-                        if (this.imageHashes[message.endpoint].has(hash.toString())) {
-                            task.status = result = 'duplicate';
-                            this.processedTasks.unshift(task);
-                            break;
-                        }
-                    }
-                    this.queuedTasks.put({
-                        type: 'photoFile',
-                        ...base,
-                        file: URL.createObjectURL(blob),
-                    } as UploadTask);
-                    break;
-                case 'photoUrl':
-                    this.queuedTasks.put({
-                        type: 'photoUrl',
-                        ...base,
-                        url: message.url,
-                    } as UploadTask);
-                    break;
-                case 'gif':
-                    this.queuedTasks.put({
-                        type: 'gif',
-                        ...base,
-                        url: message.url,
-                    } as UploadTask);
-                    break;
-            }
-            this.sendUpdateToPorts();
-            sendResponse({
-                result,
+        console.log('handleMessage');
+        let notificationId: string | undefined;
+
+        if (tabId) {
+            console.log('sending notification');
+            notificationId = await browser.tabs.sendMessage(tabId, {
+                type: 'notification',
+                options: {
+                    level: NotificationLevel.Loading,
+                    title: 'Uploading',
+                    message: `Uploading ${message.method === 'gif' ? 'GIF' : 'picture'}...`,
+                },
             });
-        })();
-        return true;
+            console.log('sent notification');
+        }
+
+        try {
+            await this.getHashes(message.endpoint);
+        } catch (e) {
+            console.error('Error fetching hashes:', e);
+        }
+
+        const base = {
+            id: uuidv7(),
+            endpoint: message.endpoint,
+            retries: 0,
+            status: 'queued',
+        };
+        let result: true | 'duplicate' = true;
+        switch (message.method) {
+            case 'photoBase64':
+                console.log('creating blob')
+                const blob = await base64ToBlob(`data:${message.data}`);
+                console.log('Blob created:', blob);
+                const task = {
+                    type: 'photoFile',
+                    ...base,
+                    file: URL.createObjectURL(blob),
+                } as UploadTask;
+                await this.db?.put('images', blob, base.id);
+                if (this.imageHashes[message.endpoint]) {
+                    const hash = await this.computeHash(blob);
+                    if (this.imageHashes[message.endpoint].has(hash.toString())) {
+                        task.status = result = 'duplicate';
+                        this.processedTasks.unshift(task);
+                        break;
+                    }
+                }
+                this.queuedTasks.put({
+                    type: 'photoFile',
+                    ...base,
+                    file: URL.createObjectURL(blob),
+                } as UploadTask);
+                break;
+            case 'photoUrl':
+                this.queuedTasks.put({
+                    type: 'photoUrl',
+                    ...base,
+                    url: message.url,
+                } as UploadTask);
+                break;
+            case 'gif':
+                this.queuedTasks.put({
+                    type: 'gif',
+                    ...base,
+                    url: message.url,
+                } as UploadTask);
+                break;
+        }
+        if (tabId && notificationId) {
+            if (result === 'duplicate') {
+                await browser.tabs.sendMessage(tabId, {
+                    type: 'update-notification',
+                    options: {
+                        id: notificationId,
+                        level: NotificationLevel.Error,
+                        title: 'Duplicate',
+                        message: `This image was sent before`,
+                    }
+                });
+            } else {
+                await browser.tabs.sendMessage(tabId, {
+                    type: 'update-notification',
+                    options: {
+                        id: notificationId,
+                        level: NotificationLevel.Success,
+                        title: 'Success',
+                        message: `${message.method === 'gif' ? 'GIF' : 'Picture'} was sent successfully`,
+                    }
+                });
+            }
+        }
+        this.sendUpdateToPorts();
+        return {};
     }
 
-    handlePortConnection(port: Port) {
+    handleExternalMessage(message: ExternalMessage, sender: browser.runtime.MessageSender) {
+        console.log('[background uploader] Received message:', message, sender);
+        if (message.type === 'upload') {
+            return this.handleMessage(message, sender?.tab?.id);
+        } else if (message.type === 'getUploadLinks') {
+            return new Promise(resolve => resolve(this.contextMenuManager.uploadLinks));
+        } else if (message.type === 'updateContextMenu') {
+            return this.contextMenuManager.init();
+        }
+    }
+
+    handlePortConnection(port: browser.runtime.Port) {
         this.ports.add(port);
 
         port.postMessage({
@@ -176,7 +239,9 @@ class Uploader {
             processed: this.processedTasks,
         });
 
-        port.onMessage.addListener((msg: PortMessage) => {
+        port.onMessage.addListener(response => {
+            const msg = response as PortMessage;
+
             switch (msg.type) {
                 case 'removeTask': {
                     const queuedIdx = this.queuedTasks.items.findIndex(task => task.id === msg.id);
@@ -187,6 +252,7 @@ class Uploader {
                     if (processedIdx !== -1) {
                         this.processedTasks.splice(processedIdx, 1);
                     }
+                    this.sendUpdateToPorts();
                     break;
                 }
             }
@@ -231,11 +297,11 @@ class Uploader {
 
             if (!this.processingDisplaying) {
                 this.processingDisplaying = true;
-                browser.browserAction.setIcon({
+                await browser.browserAction.setIcon({
                     path: browser.runtime.getURL('/loader-icon.svg'),
                 });
             }
-            browser.browserAction.setBadgeText({
+            await browser.browserAction.setBadgeText({
                 text: `${this.queuedTasks.items.length}`,
             });
 
@@ -291,10 +357,10 @@ class Uploader {
                 this.processedTasks.unshift(task);
                 if (this.queuedTasks.items.length === 0) {
                     this.processingDisplaying = false;
-                    browser.browserAction.setIcon({
+                    await browser.browserAction.setIcon({
                         path: browser.runtime.getURL('/default-icon.svg'),
                     });
-                    browser.browserAction.setBadgeText({ text: '' });
+                    await browser.browserAction.setBadgeText({ text: '' });
                 }
                 this.sendUpdateToPorts();
             }

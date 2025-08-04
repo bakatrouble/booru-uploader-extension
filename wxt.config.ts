@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readdirSync } from 'node:fs';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
+import vuetify from 'vite-plugin-vuetify';
 
 const PYODIDE_PACKAGES = [
     'numpy-2.2.5-cp313-cp313-pyodide_2025_0_wasm32.whl',
@@ -38,7 +39,7 @@ export default defineConfig({
         baseIconPath: 'public/default-icon.svg',
     },
     manifest: {
-        permissions: ['storage'],
+        permissions: ['storage', 'tabs', 'menus'],
         browser_specific_settings: {
             gecko: {
                 id: 'uploader@bakatrouble.me',
@@ -56,11 +57,18 @@ export default defineConfig({
         },
         plugins: [
             viteStaticCopyPyodide(),
+            vuetify({
+                autoImport: true,
+                styles: 'sass',
+            }),
         ],
         build: {
             sourcemap: true,
             minify: false,
             cssMinify: false,
+        },
+        ssr: {
+            noExternal: ['vuetify']
         }
     }),
 });

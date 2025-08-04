@@ -10,16 +10,19 @@ import Spinner from '@/components/Spinner.vue';
 
 const queued = ref<UploadTask[]>([]);
 const processed = ref<UploadTask[]>([]);
-const port = ref<Browser.runtime.Port>();
+const port = ref<browser.runtime.Port>();
 
 const { storage: initialTab, ready: initialTabReady } = useSyncStorage('initialTab', 0);
 
 onMounted(() => {
     port.value = browser.runtime.connect();
-    port.value.onMessage.addListener((message) => {
+    port.value.onMessage.addListener((message: any) => {
         if (message.type === 'taskList') {
             queued.value = message.queued;
             processed.value = message.processed;
+            return {};
+        } else if (message.type === 'notification') {
+            return null;
         }
     });
 })

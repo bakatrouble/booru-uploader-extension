@@ -10,7 +10,7 @@ import { useMutation } from '@tanstack/vue-query';
 const { queued, processed, port } = defineProps<{
     queued: UploadTask[];
     processed: UploadTask[];
-    port?: Browser.runtime.Port;
+    port?: browser.runtime.Port;
 }>();
 
 const loading = ref(false);
@@ -24,7 +24,8 @@ onMounted(() => {
 const { mutate: sendTestImage, isPending: isTestImageSending } = useMutation({
     mutationFn: async () => {
         return await browser.runtime.sendMessage({
-            type: 'photoBase64',
+            type: 'upload',
+            method: 'photoBase64',
             data: testImage,
             endpoint: import.meta.env.VITE_TEST_ENDPOINT,
         });
