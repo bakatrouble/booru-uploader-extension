@@ -1,2 +1,7 @@
 onlyBuiltDependencies:
   - canvas
+  - core-js
+  - esbuild
+  - sharp
+  - spawn-sync
+  - vue-demi

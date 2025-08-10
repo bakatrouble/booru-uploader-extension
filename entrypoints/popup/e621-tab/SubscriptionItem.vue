@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
-import axios from 'axios';
-import AppButton from '@/components/AppButton.vue';
+import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import { mdiClose } from '@mdi/js';
+import ky from 'ky';
 
 const { query } = defineProps<{
     query: string;
@@ -11,18 +10,27 @@ const { query } = defineProps<{
 const queryClient = useQueryClient();
 const authToken = inject<Ref<string | undefined>>('e621-auth-token', ref());
 
+const client = ky.extend({
+    prefixUrl: 'https://e621.bakatrouble.me/api',
+    hooks: {
+        beforeRequest: [
+            (request) => {
+                if (authToken.value) {
+                    request.headers.set('Authorization', authToken.value);
+                }
+            },
+        ],
+    },
+});
+
 const { mutate: doDelete, isPending: isDeleting } = useMutation({
     mutationFn: () => {
-        return axios.delete(
+        return client(
             'https://e621.bakatrouble.me/api/subscriptions',
             {
-                headers: {
-                    Authorization: `${authToken.value}`,
-                },
-                data: { subs: [query] },
-            }
-        );
-
+                json: { subs: [query] },
+            },
+        ).json();
     },
     onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['e621-subs'] });

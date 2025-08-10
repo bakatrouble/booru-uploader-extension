@@ -1,6 +1,5 @@
 import { defineConfig, WxtViteConfig } from 'wxt';
 import vuetify from 'vite-plugin-vuetify';
-import wasm from 'vite-plugin-wasm';
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
@@ -22,7 +21,7 @@ export default defineConfig({
     zip: {
         excludeSources: [
             'web-ext-artifacts/**/*',
-            'lib/imagehash/target',
+            'lib/imagehash/target/**/*',
         ],
     },
     vite: (): WxtViteConfig => ({
@@ -32,7 +31,6 @@ export default defineConfig({
                 autoImport: true,
                 styles: 'sass',
             }),
-            wasm(),
         ],
         build: {
             sourcemap: true,

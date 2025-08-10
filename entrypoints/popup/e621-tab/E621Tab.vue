@@ -32,7 +32,7 @@ const client = ky.extend({
             },
         ],
     },
-})
+});
 
 const { mutate: signIn, isPending: signInPending, error: signInError } = useMutation({
     mutationFn: async () => {

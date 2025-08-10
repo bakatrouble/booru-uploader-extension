@@ -4,7 +4,6 @@ import {computed, nextTick, onMounted, onUnmounted, reactive, ref, watch} from '
 import {VIcon, VSnackbar} from 'vuetify/components';
 import { uuidv4 } from 'uuidv7';
 import { NotificationLevel } from '@/utils/enums';
-import { testImage } from '@/entrypoints/popup/testImage';
 
 const data = reactive({
     notifications: [] as NotificationEntry[],
