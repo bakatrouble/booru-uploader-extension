@@ -1,11 +1,13 @@
 import { uuidv7 } from 'uuidv7';
 import { IDBPDatabase, openDB } from 'idb';
 import { Queue } from '@/utils/queue';
-import { base64ToBlob, blobToBase64 } from 'file64';
-import { loadPyodide, PyodideInterface } from 'pyodide';
+import { base64ToBlob } from 'file64';
 import { isDev } from '@/utils/env';
 import { NotificationLevel } from '@/utils/enums';
 import { ContextMenuManager } from '@/utils/context-menu';
+import initWasm, { imagehash } from 'imagehash-rs';
+import imagehashWasmUrl from 'imagehash-rs/imagehash_bg.wasm?url';
+import ky from 'ky';
 
 type PortMessage = {
     type: 'removeTask',
@@ -59,8 +61,6 @@ export class Uploader {
     processingDisplaying = false;
     db?: IDBPDatabase;
     imageHashes: Record<string, Set<string>> = {};
-    pyodide?: PyodideInterface;
-    computeHashPackage: any;
     contextMenuManager: ContextMenuManager;
 
     constructor() {
@@ -82,25 +82,14 @@ export class Uploader {
             await db.clear('images');
         });
 
-        // noinspection TypeScriptValidateTypes
-        const assetsDir = browser.runtime.getURL('/pyodide');
-        loadPyodide({
-            indexURL: assetsDir,
-            packageCacheDir: `${assetsDir}/static`,
-        }).then(async pyodide => {
-            this.pyodide = pyodide;
-            await pyodide.loadPackage(['Pillow', 'numpy', 'scipy', 'openblas']);
-            const scripts = await fetch(`${browser.runtime.getURL('/pyodide/pyscripts.zip')}`);
-            pyodide.unpackArchive(await scripts.arrayBuffer(), 'zip');
-            this.computeHashPackage = pyodide.pyimport('compute_hash');
-        });
+        initWasm(new URL(imagehashWasmUrl))
+            .catch(e => console.error('wasm error', e))
 
         if (isDev) {
             browser.tabs.create({
                 url: browser.runtime.getURL('popup.html'),
             });
         }
-
 
         this.contextMenuManager = new ContextMenuManager(this);
 
@@ -112,22 +101,17 @@ export class Uploader {
         if (this.imageHashes[endpoint])
             return;
         this.imageHashes[endpoint] = new Set();
-        const response = await this.jsonRpcRequest(
-            endpoint,
-            'get_hashes',
-        );
-        this.imageHashes[endpoint] = new Set((await response.json()).result);
+        const response: { hashes: string[] } = await this.getKyClient(endpoint).get('hashes').json();
+        this.imageHashes[endpoint] = new Set(response.hashes);
     }
 
     async handleMessage(message: ExternalMessage, tabId?: number) {
         if (message.type !== 'upload')
             return;
 
-        console.log('handleMessage');
         let notificationId: string | undefined;
 
         if (tabId) {
-            console.log('sending notification');
             notificationId = await browser.tabs.sendMessage(tabId, {
                 type: 'notification',
                 options: {
@@ -154,9 +138,7 @@ export class Uploader {
         let result: true | 'duplicate' = true;
         switch (message.method) {
             case 'photoBase64':
-                console.log('creating blob')
                 const blob = await base64ToBlob(`data:${message.data}`);
-                console.log('Blob created:', blob);
                 const task = {
                     type: 'photoFile',
                     ...base,
@@ -263,28 +245,16 @@ export class Uploader {
         });
     }
 
-    jsonRpcRequest(endpoint: string, method: string, ...params: any[]) {
-        return fetch(
-            endpoint,
-            {
-                headers: {
-                    'content-type': 'application/json',
-                },
-                method: 'POST',
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: 0,
-                    method,
-                    params,
-                }),
-            }
-        )
+    getKyClient(endpoint: string) {
+        return ky.extend({
+            prefixUrl: `${endpoint}`,
+        });
     }
 
     async computeHash(image: Blob): Promise<string> {
-        const buffer = await image.arrayBuffer();
-        const result = await this.computeHashPackage.compute_hash(buffer);
-        console.log(result);
+        const buffer = new Uint8Array(await image.arrayBuffer());
+        const result = imagehash(buffer);
+        console.log('hash computed', result);
         return result;
     }
 
@@ -306,45 +276,50 @@ export class Uploader {
             });
 
             try {
-                let response;
+                let response: {
+                    status: 'ok',
+                    hash?: string,
+                    upload_id: string,
+                } | {
+                    status: 'duplicate',
+                    hash: string,
+                } | {
+                    status: 'error',
+                    message: string,
+                }
+                const ky = this.getKyClient(task.endpoint);
                 switch (task.type) {
                     case 'photoFile': {
                         const blob = await this.db?.get('images', task.id);
-                        const base64 = (await blobToBase64(blob)).split(',')[1];
-                        const r = await this.jsonRpcRequest(
-                            task.endpoint,
-                            'post_photo',
-                            base64,
-                            true,
-                        );
-                        response = await r.json();
+                        const body = new FormData();
+                        body.append('upload', blob, `image-${task.id}.jpg`);
+                        response = await ky.post('photo', { body }).json();
                         break;
                     }
                     case 'photoUrl': {
-                        const r = await this.jsonRpcRequest(
-                            task.endpoint,
-                            'post_photo',
-                            task.url,
-                            false,
-                        );
-                        response = await r.json();
+                        response = await ky.post('photo', {
+                            json: {
+                                url: task.url
+                            },
+                        }).json();
                         break;
                     }
                     case 'gif': {
-                        const r = await this.jsonRpcRequest(
-                            task.endpoint,
-                            'post_gif',
-                            task.url,
-                        );
-                        response = await r.json();
+                        response = await ky.post('gif', {
+                            json: {
+                                url: task.url
+                            },
+                        }).json();
                         break;
                     }
                 }
-                if (response.result.status === 'duplicate') {
-                    this.imageHashes[task.endpoint]?.add(response.result.hash);
+                if (response.status === 'duplicate') {
+                    this.imageHashes[task.endpoint]?.add(response.hash);
                     task.status = 'duplicate';
-                } else if (response.result.status === 'ok') {
-                    this.imageHashes[task.endpoint]?.add(response.result.hash);
+                } else if (response.status === 'ok') {
+                    if (response.hash) {
+                        this.imageHashes[task.endpoint]?.add(response.hash);
+                    }
                     task.status = 'completed';
                 } else {
                     task.status = 'failed';

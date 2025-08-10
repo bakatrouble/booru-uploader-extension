@@ -2,11 +2,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import SectionHeader from '@/components/SectionHeader.vue';
 import Modal from '@/components/Modal.vue';
-import axios, { AxiosError } from 'axios';
 import AppButton from '@/components/AppButton.vue';
 import SubscriptionItem from '@/entrypoints/popup/e621-tab/SubscriptionItem.vue';
 import { useVirtualList } from '@vueuse/core';
 import { useSyncStorage } from '@/utils/useSyncStorage';
+import ky, { HTTPError } from 'ky';
 
 const loginModalOpen = ref(false);
 const addModalOpen = ref(false);
@@ -21,13 +21,37 @@ const { storage: authToken, ready: authTokenReady } = useSyncStorage('apiAuthTok
 const isAuthenticated = computed(() => !!authToken.value);
 provide('e621-auth-token', authToken);
 
+const client = ky.extend({
+    prefixUrl: 'https://e621.bakatrouble.me/api',
+    hooks: {
+        beforeRequest: [
+            (request) => {
+                if (authToken.value) {
+                    request.headers.set('Authorization', authToken.value);
+                }
+            },
+        ],
+    },
+})
+
 const { mutate: signIn, isPending: signInPending, error: signInError } = useMutation({
     mutationFn: async () => {
-        const r = await axios.post('https://e621.bakatrouble.me/api/login', {
-            username: username.value,
-            password: password.value,
-        });
-        return r.data;
+        try {
+            return await client.post('login', {
+                json: {
+                    username: username.value,
+                    password: password.value,
+                },
+            }).json() as { token: string };
+        } catch (e) {
+            if (e instanceof HTTPError) {
+                const responseJson = await e.response?.json?.();
+                if (responseJson?.message) {
+                    throw new Error(responseJson.message);
+                }
+            }
+            throw e;
+        }
     },
     onSuccess: async ({ token }: { token: string }) => {
         authToken.value = token;
@@ -51,15 +75,8 @@ const { data, isLoading, error } = useQuery({
         if (!authToken.value) {
             return [];
         }
-        const response = await axios.get(
-            'https://e621.bakatrouble.me/api/subscriptions',
-            {
-                headers: {
-                    Authorization: `${authToken.value}`,
-                },
-            }
-        );
-        return response.data.subscriptions as string[];
+        const data = await client.get('subscriptions').json() as { subscriptions: string[] };
+        return data.subscriptions as string[];
     },
     enabled: isAuthenticated,
 });
@@ -75,20 +92,18 @@ watch([filter], () => {
 });
 
 const { mutate: addSubscription, isPending: addPending } = useMutation({
-    mutationFn: async () => {
+    mutationFn: () => {
         if (!authToken.value) {
             throw new Error('Not authenticated');
         }
-        const response = await axios.post(
-            'https://e621.bakatrouble.me/api/subscriptions',
-            { subs: [newSubscription.value] },
+        return client.post(
+            'subscriptions',
             {
-                headers: {
-                    Authorization: `${authToken.value}`,
+                json: {
+                    subs: [newSubscription.value]
                 },
-            }
-        );
-        return response.data;
+            },
+        ).json();
     },
     onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['e621-subs'] });
@@ -141,8 +156,8 @@ const { mutate: addSubscription, isPending: addPending } = useMutation({
                 <input type="text" v-model="username" placeholder="Username" />
                 <input type="password" v-model="password" placeholder="Password" />
                 <div v-if="signInError" class="error-message">
-                    <code v-if="((signInError as AxiosError)?.response?.data as any)?.message">
-                        {{ ((signInError as AxiosError)?.response?.data as any)?.message }}
+                    <code v-if="(signInError as Error)?.message">
+                        {{ (signInError as Error)?.message }}
                     </code>
                     <div v-else>{{ signInError.message }}</div>
                 </div>

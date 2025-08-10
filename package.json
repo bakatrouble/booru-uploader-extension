@@ -6,12 +6,13 @@
   "scripts": {
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
-    "build": "wxt build",
+    "build": "pnpm build-lib && wxt build",
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "compile": "vue-tsc --noEmit",
     "postinstall": "wxt prepare",
+    "build-lib": "wasm-pack build lib/imagehash --target web",
     "sign": "pnpm build:firefox && dotenv cross-var 'web-ext sign --channel=unlisted'"
   },
   "dependencies": {
@@ -21,9 +22,12 @@
     "axios": "^1.11.0",
     "file64": "^1.0.5",
     "idb": "^8.0.3",
+    "imagehash-rs": "link:lib/imagehash/pkg",
+    "ky": "^1.8.2",
     "lodash": "^4.17.21",
     "mdi-vue": "^3.0.13",
     "uuidv7": "^1.0.2",
+    "vite-plugin-wasm": "^3.5.0",
     "vue": "^3.5.13",
     "vuetify": "^3.9.3"
   },
