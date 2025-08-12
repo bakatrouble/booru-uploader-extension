@@ -5,8 +5,7 @@ import { base64ToBlob } from 'file64';
 import { isDev } from '@/utils/env';
 import { NotificationLevel } from '@/utils/enums';
 import { ContextMenuManager } from '@/utils/context-menu';
-import initWasm, { imagehash } from 'imagehash-rs';
-import imagehashWasmUrl from 'imagehash-rs/imagehash_bg.wasm?url';
+import HasherWorker from '../utils/hasherWorker?worker';
 import ky from 'ky';
 
 type PortMessage = {
@@ -62,6 +61,7 @@ export class Uploader {
     db?: IDBPDatabase;
     imageHashes: Record<string, Set<string>> = {};
     contextMenuManager: ContextMenuManager;
+    hasherWorker: Worker;
 
     constructor() {
         browser.browserAction.setBadgeBackgroundColor({ color: 'teal' });
@@ -82,8 +82,8 @@ export class Uploader {
             await db.clear('images');
         });
 
-        initWasm(new URL(imagehashWasmUrl))
-            .catch(e => console.error('wasm error', e))
+        this.hasherWorker = new HasherWorker();
+        this.hasherWorker.postMessage('init')
 
         if (isDev) {
             browser.tabs.create({
@@ -202,7 +202,6 @@ export class Uploader {
     }
 
     handleExternalMessage(message: ExternalMessage, sender: browser.runtime.MessageSender) {
-        console.log('[background uploader] Received message:', message, sender);
         if (message.type === 'upload') {
             return this.handleMessage(message, sender?.tab?.id);
         } else if (message.type === 'getUploadLinks') {
@@ -253,7 +252,17 @@ export class Uploader {
 
     async computeHash(image: Blob): Promise<string> {
         const buffer = new Uint8Array(await image.arrayBuffer());
-        const result = imagehash(buffer);
+        const result = await new Promise<string>(resolve => {
+            const id = uuidv7();
+            const listener = (e: MessageEvent<{ id: string, hash: string }>) => {
+                const { id, hash } = e.data;
+                if (id !== id) return;
+                resolve(hash);
+                this.hasherWorker.removeEventListener('message', listener);
+            };
+            this.hasherWorker.addEventListener('message', listener)
+            this.hasherWorker.postMessage({ id, buffer });
+        });
         console.log('hash computed', result);
         return result;
     }
