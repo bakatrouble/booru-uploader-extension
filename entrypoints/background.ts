@@ -86,9 +86,15 @@ export class Uploader {
         this.hasherWorker.postMessage('init')
 
         if (isDev) {
-            browser.tabs.create({
-                url: browser.runtime.getURL('popup.html'),
-            });
+            // browser.tabs.create({
+            //     url: browser.runtime.getURL('options.html'),
+            // });
+            // browser.tabs.create({
+            //     url: browser.runtime.getURL('popup.html'),
+            // });
+            // browser.tabs.create({
+            //     url: browser.runtime.getURL('notifications-test-page.html'),
+            // });
         }
 
         this.contextMenuManager = new ContextMenuManager(this);
@@ -116,11 +122,9 @@ export class Uploader {
                 type: 'notification',
                 options: {
                     level: NotificationLevel.Loading,
-                    title: 'Uploading',
                     message: `Uploading ${message.method === 'gif' ? 'GIF' : 'picture'}...`,
                 },
             });
-            console.log('sent notification');
         }
 
         try {
@@ -181,8 +185,7 @@ export class Uploader {
                     options: {
                         id: notificationId,
                         level: NotificationLevel.Error,
-                        title: 'Duplicate',
-                        message: `This image was sent before`,
+                        message: `Duplicate`,
                     }
                 });
             } else {
@@ -191,8 +194,7 @@ export class Uploader {
                     options: {
                         id: notificationId,
                         level: NotificationLevel.Success,
-                        title: 'Success',
-                        message: `${message.method === 'gif' ? 'GIF' : 'Picture'} was sent successfully`,
+                        message: `${message.method === 'gif' ? 'GIF' : 'Picture'} sent`,
                     }
                 });
             }

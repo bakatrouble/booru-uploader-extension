@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
-import SectionHeader from '@/components/SectionHeader.vue';
-import Modal from '@/components/Modal.vue';
-import AppButton from '@/components/AppButton.vue';
+import SectionHeader from '../../../components/SectionHeader.vue';
+import Modal from '../../../components/Modal.vue';
+import AppButton from '../../../components/AppButton.vue';
 import SubscriptionItem from '@/entrypoints/popup/e621-tab/SubscriptionItem.vue';
 import { useVirtualList } from '@vueuse/core';
 import { useSyncStorage } from '@/utils/useSyncStorage';

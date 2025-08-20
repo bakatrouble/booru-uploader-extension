@@ -6,7 +6,7 @@ import Tab from '@/components/tabs/Tab.vue';
 import UploadsTab from '@/entrypoints/popup/uploads-tab/UploadsTab.vue';
 import E621Tab from '@/entrypoints/popup/e621-tab/E621Tab.vue';
 import { useSyncStorage } from '@/utils/useSyncStorage';
-import Spinner from '@/components/Spinner.vue';
+import Spinner from '../../components/Spinner.vue';
 
 const queued = ref<UploadTask[]>([]);
 const processed = ref<UploadTask[]>([]);

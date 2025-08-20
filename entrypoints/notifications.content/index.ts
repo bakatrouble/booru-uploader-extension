@@ -1,8 +1,20 @@
 import { createApp } from 'vue';
-import { createVuetify } from 'vuetify';
-import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
 import Notifications from './Notifications.vue';
-import 'vuetify/lib/styles/main.sass';
+import { mdiAlertCircleOutline, mdiCheckBold } from '@mdi/js';
+import mdiVue from 'mdi-vue/v3';
+import styles from '../../assets/tailwind.css?inline';
+
+export const startApp = (container: HTMLElement | string) => {
+    const app = createApp(Notifications)
+        .use(mdiVue, {
+            icons: {
+                mdiCheckBold,
+                mdiAlertCircleOutline,
+            },
+        });
+    app.mount(container);
+    return app;
+}
 
 export default defineContentScript({
     matches: ['*://*/*'],
@@ -13,20 +25,10 @@ export default defineContentScript({
             name: 'booru-notifications-ui',
             position: 'inline',
             anchor: 'body',
-            onMount: async container => {
-                const vuetify = createVuetify({
-                    icons: {
-                        defaultSet: 'mdi',
-                        aliases,
-                        sets: { mdi },
-                    },
-                    theme: {
-                        defaultTheme: 'dark',
-                    },
-                });
-                createApp(Notifications)
-                    .use(vuetify)
-                    .mount(container);
+            css: styles,
+            onMount: startApp,
+            onRemove: app => {
+                app?.unmount();
             }
         });
         ui.mount();

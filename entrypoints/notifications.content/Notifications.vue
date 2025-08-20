@@ -1,51 +1,44 @@
 <script setup lang="ts">
-import {mdiAlertCircleOutline, mdiCheckBold} from '@mdi/js';
-import {computed, nextTick, onMounted, onUnmounted, reactive, ref, watch} from 'vue'
-import {VIcon, VSnackbar} from 'vuetify/components';
 import { uuidv4 } from 'uuidv7';
 import { NotificationLevel } from '@/utils/enums';
+import Spinner from '../../components/Spinner.vue';
 
-const data = reactive({
-    notifications: [] as NotificationEntry[],
-    heights: {} as { [key: string]: number },
-});
-const $el = useTemplateRef<HTMLDivElement>('el');
+const notifications = ref<NotificationEntry[]>([]);
 
-const offsets = computed(() => {
-    const offsets = [] as number[];
-    let offset = 0;
-    for (const notification of data.notifications) {
-        offsets.push(offset);
-        if (!notification.visible) {
-            continue;
-        }
-        offset += data.heights[notification.id] + 16;
-    }
-    console.log(offsets);
-    return offsets;
-});
+const NOTIFICATION_DURATION = 5000;
+
+const planNotificationRemoval = (id: string) => {
+    setTimeout(() => {
+        notifications.value = notifications.value.filter((item) => item.id !== id)
+    }, NOTIFICATION_DURATION);
+}
 
 const pushNotification = async (options: NotificationOptions) => {
     const id = uuidv4();
-    data.notifications.push({
+    notifications.value.push({
         ...options,
         visible: true,
         id,
     });
+    if (options.level !== NotificationLevel.Loading) {
+        planNotificationRemoval(id);
+    }
     return id;
 }
 
 const updateNotification = async (options: UpdateNotificationOptions) => {
-    const idx = data.notifications.findIndex(n => n.id === options.id);
+    const idx = notifications.value.findIndex(n => n.id === options.id);
     if (idx !== -1) {
-        data.notifications[idx].level = options.level;
-        data.notifications[idx].message = options.message;
-        data.notifications[idx].title = options.title;
+        notifications.value[idx].level = options.level;
+        notifications.value[idx].message = options.message;
+        notifications.value[idx].title = options.title;
+        if (options.level !== NotificationLevel.Loading) {
+            planNotificationRemoval(options.id);
+        }
     }
 }
 
 const messageHandler = (message: RuntimeMessage) => {
-    console.log('message received', message);
     if (message.type === 'notification') {
         return pushNotification(message.options);
     } else if (message.type === 'update-notification') {
@@ -54,93 +47,95 @@ const messageHandler = (message: RuntimeMessage) => {
 }
 
 onMounted(() => {
-    console.log('Notifications mounted');
-
-    browser.runtime.onMessage.addListener(messageHandler);
+    browser?.runtime.onMessage.addListener(messageHandler);
 });
 
-const getIcon = (notification: NotificationOptions) => {
-    switch (notification.level) {
-    case NotificationLevel.Success:
-        return mdiCheckBold;
-    case NotificationLevel.Error:
-        return mdiAlertCircleOutline;
-    }
-};
-
-const getColor = (notification: NotificationOptions) => {
-    switch (notification.level) {
-    case NotificationLevel.Success:
-        return 'green';
-    case NotificationLevel.Error:
-        return 'red';
-    case NotificationLevel.Loading:
-        return 'grey';
-    }
-};
-
-watch(
-    () => data.notifications,
-    async (notifications: NotificationEntry[]) => {
-        await nextTick();
-        const heights = {} as { [key: string]: number };
-        notifications.forEach(n => {
-            const el = $el.value!.querySelector(`.v-snackbar-${n.id} .v-snackbar__wrapper`);
-            heights[n.id] = el?.clientHeight || 0;
-        });
-        data.heights = heights;
-    },
-    { deep: true },
-);
+defineExpose({
+    pushNotification,
+    updateNotification,
+});
 </script>
 
 <template>
-    <v-theme-provider>
-        <v-locale-provider ltr>
-            <div ref="el">
-                <template v-for="(notification, idx) in data.notifications" :key="notification.id">
-                    <v-snackbar
-                        ref="snackbar"
-                        v-model="notification.visible"
-                        :color="getColor(notification)"
-                        :timeout="notification.level !== NotificationLevel.Loading ? 5000 : -1"
-                        :class="`v-snackbar-${notification.id}`"
-                        :vertical="true"
-                        attach="true"
-                        location="bottom right"
-                        @click="notification.visible = false"
-                        @update:model-value="data.notifications.splice(idx, 1)"
-                    >
-                        <div class="d-flex flex-row">
-                            <div class="d-flex flex-row align-center">
-                                <v-icon v-if="notification.level !== NotificationLevel.Loading" color="white" :icon="getIcon(notification)" class="mr-4" style="font-size: 40px" />
-                                <v-progress-circular v-else :size="40" :width="4" class="mr-4" color="white" indeterminate />
-                            </div>
-                            <div>
-                                <div v-if="notification.title" class="text-subtitle-1 pb-2">{{ notification.title }}</div>
-                                <div>{{ notification.message }}</div>
-                            </div>
-                        </div>
-                    </v-snackbar>
-                </template>
-                <component is="style" v-for="(notification, idx) in data.notifications" :key="notification.id + idx">
-                    .v-snackbar-{{notification.id}} {
-                        bottom: {{ offsets[idx] }}px !important;
-                    }
-                </component>
+    <button>hello</button>
+    <transition-group
+        tag="div"
+        name="list"
+        class="notifications-container group"
+        :duration="300"
+    >
+        <div v-for="notification in notifications" :key="notification.id"
+            class="notification"
+            :data-color="notification.level"
+        >
+            <div class="flex flex-row">
+                <div class="flex flex-row items-center mr-2 text-3xl">
+                    <mdicon
+                        v-if="notification.level === NotificationLevel.Success"
+                        name="checkBold"
+                        size="30"
+                    />
+                    <mdicon
+                        v-else-if="notification.level === NotificationLevel.Error"
+                        name="alertCircleOutline"
+                        size="30"
+                    />
+                    <spinner v-else-if="notification.level === NotificationLevel.Loading" />
+                </div>
+                <div class="flex flex-col justify-center">
+                    <div v-if="notification.title" class="font-bold mb/2">{{ notification.title }}</div>
+                    <div>{{ notification.message }}</div>
+                </div>
             </div>
-        </v-locale-provider>
-    </v-theme-provider>
+        </div>
+    </transition-group>
 </template>
 
-<style lang="sass">
-.v-snackbar
-    z-index: 2000000003 !important
-    transition: bottom .3s ease
+<style lang="css">
+@layer theme, base, components, utitlities;
+@reference "../../assets/tailwind.css";
 
-    &__content
-        font-size: 14.875px !important
+@layer components {
+    .notifications-container {
+        @apply
+            z-(--base-z-index)
+            fixed
+            right-4
+            bottom-4
+            transition-all;
+    }
 
-        .text-subtitle-1
-            font-size: 17px !important
+    .notification {
+        @apply
+            p-2
+            rounded-default
+            bg-background
+            transition-all
+            mt-2
+            text-gray-50
+            font-sans
+            leading-tight
+            text-sm
+            w-48
+            group-hover:opacity-30
+            group-hover:blur-xs
+            pointer-events-none
+            data-[color="success"]:bg-green-800
+            data-[color="error"]:bg-red-800
+            data-[color="loading"]:bg-gray-800;
+
+        &:not(.list-move) {
+            z-index: 1;
+        }
+
+        &.list-enter-from, &.list-leave-to {
+            opacity: 0;
+            transform: translateY(50%);
+        }
+
+        &.list-leave-active {
+            position: absolute;
+        }
+    }
+}
 </style>

@@ -1,5 +1,5 @@
 export enum NotificationLevel {
-    Success = 'green',
-    Loading = 'grey',
-    Error = 'red',
+    Success = 'success',
+    Loading = 'loading',
+    Error = 'error',
 }

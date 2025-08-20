@@ -48,10 +48,8 @@ const recordHotkey = () => {
 </script>
 
 <template>
-    <v-btn
-        :prepend-icon="mdiKeyboard"
-        @click="recordHotkey"
-    >
+    <button class="flex flex-row gap-2" @click="recordHotkey">
+        <mdicon name="keyboard" />
         <template v-if="data.recordingHotkey">
             <template v-if="data.keys.size === 0">
                 Press a key...
@@ -68,5 +66,5 @@ const recordHotkey = () => {
                 {{ [...data.keys].join(' + ') }}
             </template>
         </template>
-    </v-btn>
+    </button>
 </template>

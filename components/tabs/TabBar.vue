@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import Tab from '@/components/tabs/Tab.vue';
-import AppButton from '@/components/AppButton.vue';
+import Tab from './Tab.vue';
+import AppButton from '../AppButton.vue';
 
 const { initialTab } = defineProps<{ initialTab?: number }>();
 const emit = defineEmits<{ tabChange: [number] }>();

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import SectionHeader from '@/components/SectionHeader.vue';
-import AppButton from '@/components/AppButton.vue';
+import SectionHeader from './SectionHeader.vue';
+import AppButton from './AppButton.vue';
 
 const { open, title } = defineProps<{
     open?: boolean;

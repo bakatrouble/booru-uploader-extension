@@ -1,29 +1,21 @@
 <script setup lang="ts">
 import { mdiArrowDown, mdiArrowUp, mdiContentSave, mdiDelete, mdiPlus } from '@mdi/js';
-import _ from 'lodash';
-import { onMounted, reactive } from 'vue';
 import { uuidv4 } from 'uuidv7';
 import HotkeyButton from './HotkeyButton.vue';
+import { useStorageAsync } from "@vueuse/core";
 
-const data = reactive({
-    uploadLinks: [] as UploadLink[],
-    savedNotification: false,
+const uploadLinks = useStorageAsync<UploadLink[]>('uploadLinks', [], {
+    getItem: async key => (await browser.storage.sync.get(key))[key],
+    setItem: (key, value) => browser.storage.sync.set({ [key]: value }),
+    removeItem: key => browser.storage.sync.remove(key),
 });
-
-onMounted(async () => {
-    const savedData = await browser.storage.sync.get([
-        'uploadLinks',
-    ]);
-    data.uploadLinks = savedData.uploadLinks ?? [] as UploadLink[];
-});
+const savedNotification = ref(false);
 
 const getUuid = () => uuidv4();
 
 const save = async () => {
-    await browser.storage.sync.set({
-        uploadLinks: _.cloneDeep(data.uploadLinks),
-    });
-    data.savedNotification = true;
+    savedNotification.value = true;
+    setTimeout(() => savedNotification.value = false, 3000);
     await browser.runtime.sendMessage({
         type: 'updateContextMenu',
     });
@@ -31,106 +23,111 @@ const save = async () => {
 </script>
 
 <template>
-    <v-app>
-        <v-main class="pa-2 d-flex flex-column justify-start">
-            <h1 class="text-h4">Image Galleries</h1>
-            <v-sheet class="pa-2" rounded>
-                <h2 class="text-h6 mb-4">Set up upload links</h2>
-                <div class="table w-100">
-                    <template v-for="(item, i) in data.uploadLinks" :key="item.id">
-                        <div class="table-row">
-                            <span>
-                                <v-text-field
-                                    v-model="item.name"
-                                    variant="solo-filled"
-                                    label="Name"
-                                />
-                            </span>
-                            <span>
-                                <v-text-field
-                                    v-model="item.shortName"
-                                    variant="solo-filled"
-                                    label="Short name"
-                                />
-                            </span>
-                            <span>
-                                <v-text-field
-                                    v-model="item.url"
-                                    variant="solo-filled"
-                                    label="URL"
-                                />
-                            </span>
-                            <span>
-                                <hotkey-button v-model="item.hotkey" />
-                            </span>
-                            <span class="d-flex align-center">
-                                <v-btn
-                                    variant="text"
-                                    :icon="mdiArrowUp"
-                                    @click="data.uploadLinks.splice(i - 1, 0, data.uploadLinks.splice(i, 1)[0])"
-                                />
-                                <v-btn
-                                    variant="text"
-                                    :icon="mdiArrowDown"
-                                    @click="data.uploadLinks.splice(i + 1, 0, data.uploadLinks.splice(i, 1)[0])"
-                                />
-                                <v-btn
-                                    variant="text"
-                                    color="red"
-                                    :icon="mdiDelete"
-                                    @click="data.uploadLinks.splice(i, 1)"
-                                />
-                            </span>
-                        </div>
-                    </template>
-                    <div class="table-row">
-                        <span>
-                            <v-btn
-                                class="mr-2"
-                                :prepend-icon="mdiPlus"
-                                @click="data.uploadLinks.push({ id: getUuid(), name: '', shortName: '', url: '', hotkey: [] })"
-                            >
-                                Add
-                            </v-btn>
-                        </span>
+        <div class="p-4 flex flex-col justify-start">
+            <h1 class="text-2xl font-bold mb-4">Booru uploader destinations</h1>
+            <transition-group tag="div" class="max-w-6xl relative">
+                <div class="row font-bold">
+                    <div>Full name</div>
+                    <div>Short name</div>
+                    <div>URL</div>
+                    <div>Hotkey</div>
+                    <div />
+                </div>
+                <div class="row" v-for="(item, i) in uploadLinks" :key="item.id">
+                    <div>
+                        <input
+                            type="text"
+                            v-model="item.name"
+                        />
+                    </div>
+                    <div>
+                        <input
+                            type="text"
+                            v-model="item.shortName"
+                        />
+                    </div>
+                    <div>
+                        <input
+                            type="text"
+                            v-model="item.url"
+                        />
+                    </div>
+                    <div>
+                        <hotkey-button v-model="item.hotkey" />
+                    </div>
+                    <div class="flex items-center">
+                        <button class="mr-2" @click="uploadLinks.splice(i - 1, 0, uploadLinks.splice(i, 1)[0])">
+                            <mdicon name="arrowUp" />
+                        </button>
+                        <button class="mr-2" @click="uploadLinks.splice(i + 1, 0, uploadLinks.splice(i, 1)[0])">
+                            <mdicon name="arrowDown" />
+                        </button>
+                        <button class="red" @click="uploadLinks.splice(i, 1)">
+                            <mdicon name="close" />
+                        </button>
                     </div>
                 </div>
-            </v-sheet>
-            <v-sheet rounded class="align-self-end mt-2 pa-2">
-                <v-btn
-                    :prepend-icon="mdiContentSave"
-                    color="primary"
-                    @click="save"
+            </transition-group>
+            <span>
+                <button
+                    class="mr-2 flex flex-row "
+                    @click="uploadLinks.push({ id: getUuid(), name: '', shortName: '', url: '', hotkey: [] })"
                 >
-                    Save
-                </v-btn>
-            </v-sheet>
-            <v-snackbar
-                v-model="data.savedNotification"
-                color="green"
-                location="bottom right"
-                :timeout="3000"
-                @click="data.savedNotification = false"
-            >
-                Settings saved
-            </v-snackbar>
-        </v-main>
-    </v-app>
+                    <mdicon name="plus" /> Add
+                </button>
+            </span>
+        </div>
 </template>
 
-<style scoped lang="sass">
-.table
-    max-width: 1024px
-    display: grid
-    grid-template-columns: repeat(4, 1fr) auto
-    grid-column-gap: 8px
-    grid-row-gap: 8px
+<style lang="css">
+@import "../../assets/tailwind.css";
 
-    .v-sheet, .table-row
-        display: contents
-</style>
+@layer components {
+    body {
+        @apply
+            bg-gray-800
+            text-gray-50;
+    }
 
-<style lang="sass">
-.v-input__details
-    display: none
+    input[type="text"] {
+        @apply
+            bg-gray-500
+            text-gray-50
+            p-2
+            rounded-sm
+            border-gray-700
+            border-1;
+    }
+
+    button {
+        @apply
+            p-2
+            rounded-sm
+            cursor-pointer
+            bg-blue-500
+            hover:bg-blue-600
+            hover:active:bg-blue-500;
+
+        &.red {
+            @apply
+                bg-red-500
+                hover:bg-red-600
+                hover:active:bg-red-500
+        }
+    }
+
+    .row {
+        @apply
+            flex
+            flex-row
+            gap-2
+            mb-2
+            transition-all;
+
+        & > * {
+            @apply
+                w-xl;
+        }
+    }
+}
 </style>

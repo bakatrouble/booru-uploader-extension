@@ -1,5 +1,7 @@
-import { defineConfig, WxtViteConfig } from 'wxt';
-import vuetify from 'vite-plugin-vuetify';
+import { defineConfig, type WxtViteConfig } from 'wxt';
+import tailwindcss from '@tailwindcss/vite';
+
+export const extensionSlug = 'uploader@bakatrouble.me';
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
@@ -14,7 +16,7 @@ export default defineConfig({
         permissions: ['storage', 'tabs', 'menus'],
         browser_specific_settings: {
             gecko: {
-                id: 'uploader@bakatrouble.me',
+                id: extensionSlug,
             },
         },
     },
@@ -26,19 +28,12 @@ export default defineConfig({
     },
     vite: (): WxtViteConfig => ({
         plugins: [
-            // @ts-ignore
-            vuetify({
-                autoImport: true,
-                styles: 'sass',
-            }),
+            tailwindcss(),
         ],
         build: {
-            sourcemap: true,
+            sourcemap: false,
             minify: false,
             cssMinify: false,
-        },
-        ssr: {
-            noExternal: ['vuetify'],
         },
         worker: {
             format: 'es',

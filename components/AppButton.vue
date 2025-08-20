@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import Spinner from '@/components/Spinner.vue';
+import Spinner from './Spinner.vue';
 
 const { loading, submit, disabled, icon } = defineProps<{
     loading?: boolean;

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 
-import SectionHeader from '@/components/SectionHeader.vue';
+import SectionHeader from '../../../components/SectionHeader.vue';
 import TaskList from '@/entrypoints/popup/uploads-tab/TaskList.vue';
 import { testImage } from '@/entrypoints/popup/testImage';
 import { UploadTask } from '@/entrypoints/background';
-import AppButton from '@/components/AppButton.vue';
+import AppButton from '../../../components/AppButton.vue';
 import { useMutation } from '@tanstack/vue-query';
 
 const { queued, processed, port } = defineProps<{
