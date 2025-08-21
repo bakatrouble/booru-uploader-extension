@@ -12,20 +12,13 @@ export default defineConfig({
     autoIcons: {
         baseIconPath: 'public/default-icon.svg',
     },
-    manifest: {
-        permissions: ['storage', 'tabs', 'menus'],
-        browser_specific_settings: {
-            gecko: {
-                id: extensionSlug,
-            },
-        },
-    },
     zip: {
         excludeSources: [
             'web-ext-artifacts/**/*',
             'lib/imagehash/target/**/*',
         ],
     },
+    filterEntrypoints: ['image-getter', 'background', 'options', 'popup', 'notifications'].concat(process.env.NODE_ENV === 'development' ? ['notifications-test-page'] : []),
     vite: (): WxtViteConfig => ({
         plugins: [
             tailwindcss(),
@@ -39,4 +32,12 @@ export default defineConfig({
             format: 'es',
         },
     }),
+    manifest: {
+        permissions: ['storage', 'tabs', 'menus'],
+        browser_specific_settings: {
+            gecko: {
+                id: extensionSlug,
+            },
+        },
+    },
 });

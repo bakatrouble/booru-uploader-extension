@@ -55,6 +55,7 @@ interface Version {
         url: string;
     };
     reviewed: boolean;
+    version: string;
 }
 
 class SignCommand extends Command {
@@ -85,6 +86,25 @@ class SignCommand extends Command {
                 ],
             },
         });
+    }
+    
+    async preflightCheck(version: string) {
+        this.spinner.start('Preflight checks...')
+        const versions = (await this.client
+            .get(`addon/${extensionSlug}/versions`, {
+                searchParams: {
+                    filter: 'all_with_unlisted',
+                },
+            })
+            .json()) as { results: Version[] };
+        for (const v of versions.results) {
+            if (v.version === version) {
+                this.spinner.error(`Version ${version} already exists`);
+                console.log(v.file.url);
+                return false;
+            }
+        }
+        return true;
     }
 
     async upload(extensionZip: string) {
@@ -159,7 +179,8 @@ class SignCommand extends Command {
         } catch (e) {
             this.spinner.error('Error adding a version');
             if (e instanceof HTTPError) {
-                console.error('response', await e.response.json());
+                const response = await e.response.json()
+                console.error('response', response);
                 process.exit(1);
             }
             throw e;
@@ -230,6 +251,9 @@ class SignCommand extends Command {
             return;
         }
 
+        if (!await this.preflightCheck(version)) {
+            return;
+        }
         const uploadUuid = await this.upload(extensionZip);
         if (await this.waitForUploadValidation(uploadUuid)) {
             const versionId = await this.addVersion(uploadUuid);

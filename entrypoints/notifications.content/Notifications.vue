@@ -57,7 +57,6 @@ defineExpose({
 </script>
 
 <template>
-    <button>hello</button>
     <transition-group
         tag="div"
         name="list"
