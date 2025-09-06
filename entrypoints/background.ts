@@ -304,7 +304,10 @@ export class Uploader {
                         const blob = await this.db?.get('images', task.id);
                         const body = new FormData();
                         body.append('upload', blob, `image-${task.id}.jpg`);
-                        response = await ky.post('photo', { body }).json();
+                        response = await ky.post('photo', {
+                            body,
+                            throwHttpErrors: false,
+                        }).json();
                         break;
                     }
                     case 'photoUrl': {
@@ -312,6 +315,7 @@ export class Uploader {
                             json: {
                                 url: task.url
                             },
+                            throwHttpErrors: false,
                         }).json();
                         break;
                     }
@@ -320,6 +324,7 @@ export class Uploader {
                             json: {
                                 url: task.url
                             },
+                            throwHttpErrors: false,
                         }).json();
                         break;
                     }

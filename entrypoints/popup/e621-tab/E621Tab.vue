@@ -10,14 +10,13 @@ import ky, { HTTPError } from 'ky';
 
 const loginModalOpen = ref(false);
 const addModalOpen = ref(false);
-const username = ref('');
-const password = ref('');
+const apiKeyInput = ref('');
 const newSubscription = ref('');
 const filter = ref('');
 
 const queryClient = useQueryClient();
 
-const { storage: authToken, ready: authTokenReady } = useSyncStorage('apiAuthToken', '');
+const { storage: authToken, ready: authTokenReady } = useSyncStorage('apiKey', '');
 const isAuthenticated = computed(() => !!authToken.value);
 provide('e621-auth-token', authToken);
 
@@ -27,7 +26,7 @@ const client = ky.extend({
         beforeRequest: [
             (request) => {
                 if (authToken.value) {
-                    request.headers.set('Authorization', authToken.value);
+                    request.headers.set('X-API-Key', authToken.value);
                 }
             },
         ],
@@ -37,12 +36,12 @@ const client = ky.extend({
 const { mutate: signIn, isPending: signInPending, error: signInError } = useMutation({
     mutationFn: async () => {
         try {
-            return await client.post('login', {
-                json: {
-                    username: username.value,
-                    password: password.value,
-                },
-            }).json() as { token: string };
+            await client.get('subscriptions', {
+                headers: {
+                    'X-API-Key': apiKeyInput.value
+                }
+            }).json();
+            return true;
         } catch (e) {
             if (e instanceof HTTPError) {
                 const responseJson = await e.response?.json?.();
@@ -53,10 +52,10 @@ const { mutate: signIn, isPending: signInPending, error: signInError } = useMuta
             throw e;
         }
     },
-    onSuccess: async ({ token }: { token: string }) => {
-        authToken.value = token;
+    onSuccess: async () => {
+        authToken.value = apiKeyInput.value;
         loginModalOpen.value = false;
-        username.value = password.value = '';
+        apiKeyInput.value = '';
     },
     onError: (err) => {
         console.error('Login failed:', err);
@@ -150,11 +149,10 @@ const { mutate: addSubscription, isPending: addPending } = useMutation({
         <modal
             title="Sign in"
             :open="loginModalOpen"
-            @close="() => { if (!signInPending) { loginModalOpen = false; username = password = ''; } }"
+            @close="() => { if (!signInPending) { loginModalOpen = false; apiKeyInput = ''; } }"
         >
             <form class="form" @submit.prevent="signIn()">
-                <input type="text" v-model="username" placeholder="Username" />
-                <input type="password" v-model="password" placeholder="Password" />
+                <input type="text" v-model="apiKeyInput" placeholder="API key" />
                 <div v-if="signInError" class="error-message">
                     <code v-if="(signInError as Error)?.message">
                         {{ (signInError as Error)?.message }}
