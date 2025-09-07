@@ -1,12 +1,12 @@
 <script lang="ts" setup>
 
-import type { UploadTask } from '@/entrypoints/background';
 import TabBar from '@/components/tabs/TabBar.vue';
 import Tab from '@/components/tabs/Tab.vue';
 import UploadsTab from '@/entrypoints/popup/uploads-tab/UploadsTab.vue';
 import E621Tab from '@/entrypoints/popup/e621-tab/E621Tab.vue';
 import { useSyncStorage } from '@/utils/useSyncStorage';
 import Spinner from '../../components/Spinner.vue';
+import type { UploadTask } from '../background/uploader';
 
 const queued = ref<UploadTask[]>([]);
 const processed = ref<UploadTask[]>([]);
@@ -15,7 +15,7 @@ const port = ref<browser.runtime.Port>();
 const { storage: initialTab, ready: initialTabReady } = useSyncStorage('initialTab', 0);
 
 onMounted(() => {
-    port.value = browser.runtime.connect();
+    port.value = browser.runtime.connect({ name: 'uploader' });
     port.value.onMessage.addListener((message: any) => {
         if (message.type === 'taskList') {
             queued.value = message.queued;

@@ -1,4 +1,4 @@
-import { Uploader } from '@/entrypoints/background';
+import { Uploader } from '../entrypoints/background/uploader';
 
 enum MenuIds {
     Prefix = 'send-to-tg-',

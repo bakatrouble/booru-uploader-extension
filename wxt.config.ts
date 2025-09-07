@@ -18,7 +18,9 @@ export default defineConfig({
             'lib/imagehash/target/**/*',
         ],
     },
-    filterEntrypoints: ['image-getter', 'background', 'options', 'popup', 'notifications'].concat(process.env.NODE_ENV === 'development' ? ['notifications-test-page'] : []),
+    filterEntrypoints: [
+        'image-getter', 'background', 'options', 'popup', 'notifications', 'e621-favorites'
+    ].concat(process.env.NODE_ENV === 'development' ? ['notifications-test-page'] : []),
     vite: (): WxtViteConfig => ({
         plugins: [
             tailwindcss(),

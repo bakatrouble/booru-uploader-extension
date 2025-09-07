@@ -1,8 +1,8 @@
 <script setup lang="ts">
 
 import Spinner from '../../../components/Spinner.vue';
-import type { UploadTask } from '@/entrypoints/background';
 import AppButton from '../../../components/AppButton.vue';
+import type { UploadTask } from '../../background/uploader';
 
 const { tasks } = defineProps<{
     tasks: UploadTask[];

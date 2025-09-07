@@ -3,9 +3,9 @@
 import SectionHeader from '../../../components/SectionHeader.vue';
 import TaskList from '@/entrypoints/popup/uploads-tab/TaskList.vue';
 import { testImage } from '@/entrypoints/popup/testImage';
-import { UploadTask } from '@/entrypoints/background';
 import AppButton from '../../../components/AppButton.vue';
 import { useMutation } from '@tanstack/vue-query';
+import type { UploadTask } from '../../background/uploader';
 
 const { queued, processed, port } = defineProps<{
     queued: UploadTask[];

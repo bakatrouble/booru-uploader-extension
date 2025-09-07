@@ -1,11 +1,11 @@
-import { uuidv7 } from 'uuidv7';
-import { IDBPDatabase, openDB } from 'idb';
 import { Queue } from '@/utils/queue';
-import { base64ToBlob } from 'file64';
+import { IDBPDatabase, openDB } from 'idb';
+import { ContextMenuManager } from '@/utils/context-menu';
+import HasherWorker from '@/utils/hasherWorker?worker';
 import { isDev } from '@/utils/env';
 import { NotificationLevel } from '@/utils/enums';
-import { ContextMenuManager } from '@/utils/context-menu';
-import HasherWorker from '../utils/hasherWorker?worker';
+import { uuidv7 } from 'uuidv7';
+import { base64ToBlob } from 'file64';
 import ky from 'ky';
 
 type PortMessage = {
@@ -20,16 +20,16 @@ type ExternalMessage = {
         type: 'upload',
         endpoint: string;
     } & (
-        {
-            method: 'photoBase64';
-            data: string;
-        } | {
-            method: 'photoUrl';
-            url: string;
-        } | {
-            method: 'gif';
-            url: string;
-        }
+    {
+        method: 'photoBase64';
+        data: string;
+    } | {
+    method: 'photoUrl';
+    url: string;
+} | {
+    method: 'gif';
+    url: string;
+}
     )
 );
 
@@ -71,7 +71,12 @@ export class Uploader {
         browser.runtime.onMessage
             .addListener((message) => this.handleExternalMessage(message, {}));
         browser.runtime.onConnect
-            .addListener(port => this.handlePortConnection(port))
+            .addListener(port => {
+                if (port.name === 'uploader') {
+                    return this.handlePortConnection(port);
+                }
+                return false;
+            })
 
         openDB('booru-uploader', 2, {
             upgrade(db) {
@@ -367,10 +372,3 @@ export class Uploader {
         this.ports.forEach(port => port.postMessage(message));
     }
 }
-
-// noinspection JSUnusedGlobalSymbols
-export default defineBackground({
-    main: () => {
-        new Uploader();
-    }
-});
