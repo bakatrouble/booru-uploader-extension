@@ -7,7 +7,7 @@ const { subscriptions, allTags } = defineProps<{
 const relevantSubscriptions = computed(() => {
     return subscriptions.filter(sub => allTags.some(tag => {
         const escapedTag = RegExp.escape(tag);
-        const pattern = `(^|[{}|\\s-])${escapedTag}($|[{}|\\s])`;
+        const pattern = `(^-?|[{}|\\s])-?${escapedTag}($|[{}|\\s])`;
         return new RegExp(pattern).test(sub);
     }));
 });
