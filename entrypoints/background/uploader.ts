@@ -50,6 +50,10 @@ export type UploadTask = {
     {
         type: 'gif';
         url: string;
+    } |
+    {
+        type: 'video';
+        url: string;
     }
 );
 
@@ -194,6 +198,13 @@ export class Uploader {
                 case 'gif':
                     this.queuedTasks.put({
                         type: 'gif',
+                        ...base,
+                        url: message.url,
+                    } as UploadTask);
+                    break;
+                case 'video':
+                    this.queuedTasks.put({
+                        type: 'video',
                         ...base,
                         url: message.url,
                     } as UploadTask);
@@ -345,6 +356,15 @@ export class Uploader {
                     }
                     case 'gif': {
                         response = await ky.post('gif', {
+                            json: {
+                                url: task.url
+                            },
+                            throwHttpErrors: false,
+                        }).json();
+                        break;
+                    }
+                    case 'video': {
+                        response = await ky.post('video', {
                             json: {
                                 url: task.url
                             },
