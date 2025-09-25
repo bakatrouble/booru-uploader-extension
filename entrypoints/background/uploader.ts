@@ -37,7 +37,7 @@ export type UploadTask = {
     id: string;
     endpoint: string;
     retries: number;
-    status: 'queued' | 'processing' | 'completed' | 'duplicate' | 'failed';
+    status: 'queued' | 'processing' | 'complete' | 'duplicate' | 'failed';
 } & (
     {
         type: 'photoFile';
@@ -62,6 +62,8 @@ export class Uploader {
     imageHashes: Record<string, Set<string>> = {};
     contextMenuManager: ContextMenuManager;
     hasherWorker: Worker;
+    lock: Promise<void> | undefined;
+    lockResolve: (() => void) | undefined;
 
     constructor() {
         browser.browserAction.setBadgeBackgroundColor({ color: 'teal' });
@@ -115,97 +117,114 @@ export class Uploader {
         const response: { hashes: string[] } = await this.getKyClient(endpoint).get('hashes').json();
         this.imageHashes[endpoint] = new Set(response.hashes);
     }
+    
+    async getHash(endpoint: string, hash: string) {
+        const response: { exists: boolean } = await this.getKyClient(endpoint).get(`hashes/${hash}`).json();
+        if (response.exists) {
+            this.imageHashes[endpoint]?.add(hash);
+        } else {
+            this.imageHashes[endpoint]?.delete(hash);
+        }
+        return response.exists;
+    }
 
     async handleMessage(message: ExternalMessage, tabId?: number) {
         if (message.type !== 'upload')
             return;
 
-        let notificationId: string | undefined;
-
-        if (tabId) {
-            notificationId = await browser.tabs.sendMessage(tabId, {
-                type: 'notification',
-                options: {
-                    level: NotificationLevel.Loading,
-                    message: `Uploading ${message.method === 'gif' ? 'GIF' : 'picture'}...`,
-                },
-            });
-        }
-
+        await this.lock;
+        this.lock = new Promise(resolve => this.lockResolve = resolve);
         try {
-            await this.getHashes(message.endpoint);
-        } catch (e) {
-            console.error('Error fetching hashes:', e);
-        }
+            let notificationId: string | undefined;
 
-        const base = {
-            id: uuidv7(),
-            endpoint: message.endpoint,
-            retries: 0,
-            status: 'queued',
-        };
-        let result: true | 'duplicate' = true;
-        switch (message.method) {
-            case 'photoBase64':
-                const blob = await base64ToBlob(`data:${message.data}`);
-                const task = {
-                    type: 'photoFile',
-                    ...base,
-                    file: URL.createObjectURL(blob),
-                } as UploadTask;
-                await this.db?.put('images', blob, base.id);
-                if (this.imageHashes[message.endpoint]) {
-                    const hash = await this.computeHash(blob);
-                    if (this.imageHashes[message.endpoint].has(hash.toString())) {
-                        task.status = result = 'duplicate';
-                        this.processedTasks.unshift(task);
-                        break;
-                    }
-                }
-                this.queuedTasks.put({
-                    type: 'photoFile',
-                    ...base,
-                    file: URL.createObjectURL(blob),
-                } as UploadTask);
-                break;
-            case 'photoUrl':
-                this.queuedTasks.put({
-                    type: 'photoUrl',
-                    ...base,
-                    url: message.url,
-                } as UploadTask);
-                break;
-            case 'gif':
-                this.queuedTasks.put({
-                    type: 'gif',
-                    ...base,
-                    url: message.url,
-                } as UploadTask);
-                break;
-        }
-        if (tabId && notificationId) {
-            if (result === 'duplicate') {
-                await browser.tabs.sendMessage(tabId, {
-                    type: 'update-notification',
+            if (tabId) {
+                notificationId = await browser.tabs.sendMessage(tabId, {
+                    type: 'notification',
                     options: {
-                        id: notificationId,
-                        level: NotificationLevel.Error,
-                        message: `Duplicate`,
-                    }
-                });
-            } else {
-                await browser.tabs.sendMessage(tabId, {
-                    type: 'update-notification',
-                    options: {
-                        id: notificationId,
-                        level: NotificationLevel.Success,
-                        message: `${message.method === 'gif' ? 'GIF' : 'Picture'} sent`,
-                    }
+                        level: NotificationLevel.Loading,
+                        message: `Uploading ${message.method === 'gif' ? 'GIF' : 'picture'}...`,
+                    },
                 });
             }
+
+            try {
+                await this.getHashes(message.endpoint);
+            } catch (e) {
+                console.error('Error fetching hashes:', e);
+            }
+
+            const base = {
+                id: uuidv7(),
+                endpoint: message.endpoint,
+                retries: 0,
+                status: 'queued',
+            };
+            let result: true | 'duplicate' = true;
+            switch (message.method) {
+                case 'photoBase64':
+                    const blob = await base64ToBlob(`data:${message.data}`);
+                    const task = {
+                        type: 'photoFile',
+                        ...base,
+                        file: URL.createObjectURL(blob),
+                    } as UploadTask;
+                    await this.db?.put('images', blob, base.id);
+                    if (this.imageHashes[message.endpoint]) {
+                        const hash = await this.computeHash(blob);
+                        let conflict = this.imageHashes[message.endpoint].has(hash.toString());
+                        if (conflict && await this.getHash(message.endpoint, hash)) {
+                            task.status = result = 'duplicate';
+                            this.processedTasks.unshift(task);
+                            break;
+                        }
+                    }
+                    this.queuedTasks.put({
+                        type: 'photoFile',
+                        ...base,
+                        file: URL.createObjectURL(blob),
+                    } as UploadTask);
+                    break;
+                case 'photoUrl':
+                    this.queuedTasks.put({
+                        type: 'photoUrl',
+                        ...base,
+                        url: message.url,
+                    } as UploadTask);
+                    break;
+                case 'gif':
+                    this.queuedTasks.put({
+                        type: 'gif',
+                        ...base,
+                        url: message.url,
+                    } as UploadTask);
+                    break;
+            }
+            if (tabId && notificationId) {
+                if (result === 'duplicate') {
+                    await browser.tabs.sendMessage(tabId, {
+                        type: 'update-notification',
+                        options: {
+                            id: notificationId,
+                            level: NotificationLevel.Error,
+                            message: `Duplicate`,
+                        }
+                    });
+                } else {
+                    await browser.tabs.sendMessage(tabId, {
+                        type: 'update-notification',
+                        options: {
+                            id: notificationId,
+                            level: NotificationLevel.Success,
+                            message: `${message.method === 'gif' ? 'GIF' : 'Picture'} sent`,
+                        }
+                    });
+                }
+            }
+            this.sendUpdateToPorts();
+            return {};
+        } finally {
+            this.lockResolve?.();
         }
-        this.sendUpdateToPorts();
-        return {};
     }
 
     handleExternalMessage(message: ExternalMessage, sender: browser.runtime.MessageSender) {
@@ -341,7 +360,7 @@ export class Uploader {
                     if (response.hash) {
                         this.imageHashes[task.endpoint]?.add(response.hash);
                     }
-                    task.status = 'completed';
+                    task.status = 'complete';
                 } else {
                     task.status = 'failed';
                 }
