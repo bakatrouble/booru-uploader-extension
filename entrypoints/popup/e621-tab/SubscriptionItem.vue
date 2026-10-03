@@ -3,8 +3,9 @@ import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import { mdiClose } from '@mdi/js';
 import ky from 'ky';
 
-const { query } = defineProps<{
+const { query, website } = defineProps<{
     query: string;
+    website: string;
 }>();
 
 const queryClient = useQueryClient();
@@ -26,7 +27,7 @@ const client = ky.extend({
 const { mutate: doDelete, isPending: isDeleting } = useMutation({
     mutationFn: () => {
         return client(
-            'https://e621.bakatrouble.me/api/subscriptions',
+            `https://e621.bakatrouble.me/api/subscriptions?webiste=${website}`,
             {
                 json: { subs: [query] },
             },

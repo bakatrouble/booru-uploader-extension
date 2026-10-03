@@ -8,6 +8,10 @@ import { useVirtualList } from '@vueuse/core';
 import { useSyncStorage } from '@/utils/useSyncStorage';
 import ky, { HTTPError } from 'ky';
 
+const { website } = defineProps<{
+    website: string;
+}>();
+
 const loginModalOpen = ref(false);
 const addModalOpen = ref(false);
 const apiKeyInput = ref('');
@@ -36,7 +40,7 @@ const client = ky.extend({
 const { mutate: signIn, isPending: signInPending, error: signInError } = useMutation({
     mutationFn: async () => {
         try {
-            await client.get('subscriptions', {
+            await client.get(`subscriptions?website=${website}`, {
                 headers: {
                     'X-API-Key': apiKeyInput.value
                 }
@@ -74,7 +78,7 @@ const { data, isLoading, error } = useQuery({
         if (!authToken.value) {
             return [];
         }
-        const data = await client.get('subscriptions').json() as { subscriptions: string[] };
+        const data = await client.get(`subscriptions?website=${website}`).json() as { subscriptions: string[] };
         return data.subscriptions as string[];
     },
     enabled: isAuthenticated,
@@ -96,7 +100,7 @@ const { mutate: addSubscription, isPending: addPending } = useMutation({
             throw new Error('Not authenticated');
         }
         return client.post(
-            'subscriptions',
+            `subscriptions?website=${website}`,
             {
                 json: {
                     subs: [newSubscription.value]
@@ -140,6 +144,7 @@ const { mutate: addSubscription, isPending: addPending } = useMutation({
                             v-for="item in list"
                             :key="item.index"
                             :query="item.data"
+                            :website="website"
                         />
                     </div>
                 </div>

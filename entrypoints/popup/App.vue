@@ -3,7 +3,7 @@
 import TabBar from '@/components/tabs/TabBar.vue';
 import Tab from '@/components/tabs/Tab.vue';
 import UploadsTab from '@/entrypoints/popup/uploads-tab/UploadsTab.vue';
-import E621Tab from '@/entrypoints/popup/e621-tab/E621Tab.vue';
+import SubscriptionsTab from './e621-tab/SubscriptionsTab.vue';
 import { useSyncStorage } from '@/utils/useSyncStorage';
 import Spinner from '../../components/Spinner.vue';
 import type { UploadTask } from '../background/uploader';
@@ -35,7 +35,11 @@ onMounted(() => {
         </tab>
 
         <tab title="e621">
-            <e621-tab />
+            <subscriptions-tab website="e621" />
+        </tab>
+
+        <tab title="Gelbooru">
+            <subscriptions-tab website="gelbooru" />
         </tab>
     </tab-bar>
     <spinner v-else />
