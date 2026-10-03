@@ -41,6 +41,7 @@
     "shelljs": "^0.10.0",
     "typescript": "^5.9.2",
     "vue-tsc": "^2.2.10",
+    "wasm-pack": "^0.15.0",
     "wxt": "^0.20.8",
     "yocto-spinner": "^1.0.0"
   }

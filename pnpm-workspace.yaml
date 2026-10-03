@@ -5,10 +5,4 @@ allowBuilds:
   sharp: true
   spawn-sync: true
   vue-demi: true
-onlyBuiltDependencies:
-  - canvas
-  - core-js
-  - esbuild
-  - sharp
-  - spawn-sync
-  - vue-demi
+  wasm-pack: true
