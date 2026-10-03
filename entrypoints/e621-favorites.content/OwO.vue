@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useMutation } from '@tanstack/vue-query';
+import { useWebsite } from "./useWebsite";
 
 const { el, tag, subscriptions, loading } = defineProps<{
     el: HTMLElement;
@@ -12,11 +13,14 @@ const isSubscribed = computed(() => {
     return subscriptions.includes(tag);
 });
 
+const website = useWebsite();
+
 const { mutateAsync: toggleMutation, isPending: togglePending } = useMutation({
     mutationFn: async () => {
         await browser.runtime.sendMessage({
             type: isSubscribed.value ? 'removeSubscription' : 'addSubscription',
             tag,
+            website: website.value,
         });
     },
 });

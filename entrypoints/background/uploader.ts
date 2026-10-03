@@ -202,13 +202,13 @@ export class Uploader {
                         url: message.url,
                     } as UploadTask);
                     break;
-                case 'video':
-                    this.queuedTasks.put({
-                        type: 'video',
-                        ...base,
-                        url: message.url,
-                    } as UploadTask);
-                    break;
+                // case 'video':
+                //     this.queuedTasks.put({
+                //         type: 'video',
+                //         ...base,
+                //         url: message.url,
+                //     } as UploadTask);
+                //     break;
             }
             if (tabId && notificationId) {
                 if (result === 'duplicate') {

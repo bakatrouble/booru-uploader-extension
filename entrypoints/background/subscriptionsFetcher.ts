@@ -3,13 +3,13 @@ import ky from 'ky';
 type RuntimeMessage = {
     type: 'fetchSubscriptions',
 } | {
-    type: 'addSubscription', tag: string,
+    type: 'addSubscription', tag: string, website: string
 } | {
-    type: 'removeSubscription', tag: string,
+    type: 'removeSubscription', tag: string, website: string
 }
 
 export class SubscriptionsFetcher {
-    subscriptions: string[] = [];
+    subscriptions: Record<string, string[]> = {};
     ports = new Set<browser.runtime.Port>();
 
     constructor() {
@@ -32,7 +32,10 @@ export class SubscriptionsFetcher {
             hooks: {
                 beforeRequest: [
                     async (request) => {
-                        const { apiKey } = await browser.storage.sync.get('apiKey');
+                        let { apiKey } = await browser.storage.sync.get('apiKey');
+                        if (!apiKey) {
+                            apiKey = import.meta.env.VITE_API_KEY;
+                        }
                         if (apiKey) {
                             request.headers.set('X-API-Key', apiKey);
                         } else {
@@ -45,11 +48,15 @@ export class SubscriptionsFetcher {
     }
 
     async fetchSubscriptions() {
-        const { apiKey } = await browser.storage.sync.get('apiKey');
+        const { apiKey } = await browser.storage.sync.get('apiKey') || import.meta.env.VITE_API_KEY;
         if (!apiKey)
             return [];
-        const { subscriptions } = await this.client.get('subscriptions').json() as { subscriptions: string[] };
-        this.subscriptions = subscriptions;
+        const [{ subscriptions: e621 }, { subscriptions: gelbooru }] = await Promise.all([
+            this.client.get('subscriptions?website=e621').json(),
+            this.client.get('subscriptions?website=gelbooru').json(),
+        ]) as { subscriptions: string[] }[];
+        this.subscriptions.e621 = e621;
+        this.subscriptions.gelbooru = gelbooru;
         for (const port of this.ports) {
             port.postMessage({ subscriptions: this.subscriptions });
         }
@@ -78,14 +85,14 @@ export class SubscriptionsFetcher {
                     });
                 break;
             case 'addSubscription':
-                this.client.post('subscriptions', { json: { subs: [msg.tag] } })
+                this.client.post(`subscriptions?website=${msg.website}`, { json: { subs: [msg.tag] } })
                     .then(() => this.fetchSubscriptions())
                     .finally(() => {
                         sendResponse(true);
                     });
                 break;
             case 'removeSubscription':
-                this.client.delete('subscriptions', { json: { subs: [msg.tag] } })
+                this.client.delete(`subscriptions?website=${msg.website}`, { json: { subs: [msg.tag] } })
                     .then(() => this.fetchSubscriptions())
                     .finally(() => {
                         sendResponse(true);

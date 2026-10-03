@@ -20,7 +20,7 @@ const filter = ref('');
 
 const queryClient = useQueryClient();
 
-const { storage: authToken, ready: authTokenReady } = useSyncStorage('apiKey', '');
+const { storage: authToken, ready: authTokenReady } = useSyncStorage('apiKey', import.meta.env.VITE_API_KEY || '');
 const isAuthenticated = computed(() => !!authToken.value);
 provide('e621-auth-token', authToken);
 
@@ -73,7 +73,7 @@ const { mutate: signOut } = useMutation({
 })
 
 const { data, isLoading, error } = useQuery({
-    queryKey: ['e621-subs'],
+    queryKey: ['subs', website],
     queryFn: async () => {
         if (!authToken.value) {
             return [];

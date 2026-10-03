@@ -22,7 +22,7 @@ const activeTab = ref(initialTab || 0);
             {{ tab.props.title }}
         </app-button>
     </div>
-    <component :is="tabs[activeTab]" />
+    <component :is="tabs[activeTab]" :key="activeTab" />
 </template>
 
 <style scoped lang="sass">

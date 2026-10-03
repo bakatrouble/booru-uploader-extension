@@ -2,7 +2,7 @@ import Favorites from './Favorites.vue';
 import { VueQueryPlugin } from '@tanstack/vue-query';
 
 export default defineContentScript({
-    matches: ['*://e621.net/*', '*://e926.net/*'],
+    matches: ['*://e621.net/*', '*://e926.net/*', '*://gelbooru.com/*'],
 
     main: async (ctx) => {
         const ui = createIntegratedUi(ctx, {
