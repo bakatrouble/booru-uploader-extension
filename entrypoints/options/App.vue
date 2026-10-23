@@ -1,25 +1,33 @@
 <script setup lang="ts">
-import { mdiArrowDown, mdiArrowUp, mdiContentSave, mdiDelete, mdiPlus } from '@mdi/js';
+import {
+    mdiArrowDown,
+    mdiArrowUp,
+    mdiContentSave,
+    mdiDelete,
+    mdiPlus,
+} from '@mdi/js';
+import { useStorageAsync } from '@vueuse/core';
 import { uuidv4 } from 'uuidv7';
+import { moveUploadLink } from '@/utils/uploadLinks';
+import { browserSyncStorage } from '@/utils/useSyncStorage';
 import HotkeyButton from './HotkeyButton.vue';
-import { useStorageAsync } from "@vueuse/core";
 
-const uploadLinks = useStorageAsync<UploadLink[]>('uploadLinks', [], {
-    getItem: async key => (await browser.storage.sync.get(key))[key],
-    setItem: (key, value) => browser.storage.sync.set({ [key]: value }),
-    removeItem: key => browser.storage.sync.remove(key),
-});
+const uploadLinks = useStorageAsync<UploadLink[]>(
+    'uploadLinks',
+    [],
+    browserSyncStorage,
+);
 const savedNotification = ref(false);
 
 const getUuid = () => uuidv4();
 
 const save = async () => {
     savedNotification.value = true;
-    setTimeout(() => savedNotification.value = false, 3000);
+    setTimeout(() => (savedNotification.value = false), 3000);
     await browser.runtime.sendMessage({
         type: 'updateContextMenu',
     });
-}
+};
 </script>
 
 <template>
@@ -56,10 +64,10 @@ const save = async () => {
                         <hotkey-button v-model="item.hotkey" />
                     </div>
                     <div class="flex items-center">
-                        <button class="mr-2" @click="uploadLinks.splice(i - 1, 0, uploadLinks.splice(i, 1)[0])">
+                        <button class="mr-2" @click="moveUploadLink(uploadLinks, i, -1)">
                             <mdicon name="arrowUp" />
                         </button>
-                        <button class="mr-2" @click="uploadLinks.splice(i + 1, 0, uploadLinks.splice(i, 1)[0])">
+                        <button class="mr-2" @click="moveUploadLink(uploadLinks, i, 1)">
                             <mdicon name="arrowDown" />
                         </button>
                         <button class="red" @click="uploadLinks.splice(i, 1)">

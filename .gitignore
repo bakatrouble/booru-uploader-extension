@@ -26,3 +26,5 @@ web-ext.config.ts
 
 /web-ext-artifacts
 /.env
+
+test-results/

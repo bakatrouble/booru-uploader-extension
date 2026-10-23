@@ -1,7 +1,6 @@
 <script setup lang="ts">
-
-import Spinner from '../../../components/Spinner.vue';
 import AppButton from '../../../components/AppButton.vue';
+import Spinner from '../../../components/Spinner.vue';
 import type { UploadTask } from '../../background/uploader';
 
 const { tasks } = defineProps<{
@@ -18,7 +17,7 @@ const emit = defineEmits<{
         <div v-for="task in tasks" class="task-cell">
             <img v-if="task.type === 'photoFile'" :src="task.file!" />
             <div class="task-status-container">
-                <spinner v-if="['pending', 'processing'].includes(task.status)" size="30" color="white" class="task-spinner" />
+                <spinner v-if="['queued', 'processing'].includes(task.status)" size="30" color="white" class="task-spinner" />
                 <span>{{ task.status }}</span>
             </div>
             <app-button v-if="task.status !== 'processing'" class="remove-btn" icon="close" @click="emit('removeTask', task.id)" />

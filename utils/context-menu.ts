@@ -1,12 +1,12 @@
-import { Uploader } from '../entrypoints/background/uploader';
+import type { Uploader } from '../entrypoints/background/uploader';
 
-enum MenuIds {
-    Prefix = 'send-to-tg-',
-    Root = `${Prefix}root`,
-    Settings = `${Prefix}settings`,
-    Destination = `${Prefix}dst-`,
-    Separator = `${Prefix}separator-`,
-}
+export const MenuIds = {
+    Prefix: 'send-to-tg-',
+    Root: 'send-to-tg-root',
+    Settings: 'send-to-tg-settings',
+    Destination: 'send-to-tg-dst-',
+    Separator: 'send-to-tg-separator-',
+} as const;
 
 export class ContextMenuManager {
     uploadLinks: UploadLink[] = [];
@@ -20,22 +20,27 @@ export class ContextMenuManager {
     async init() {
         if (this.initialized) {
             try {
-                await browser.menus.remove(MenuIds.Root);
+                await browser.contextMenus.remove(MenuIds.Root);
             } catch (e) {
                 console.warn(e);
             }
         }
 
-        this.uploadLinks = (await browser.storage.sync.get('uploadLinks')).uploadLinks || [];
+        this.uploadLinks =
+            (
+                (await browser.storage.sync.get('uploadLinks')) as {
+                    uploadLinks?: UploadLink[];
+                }
+            ).uploadLinks || [];
 
-        browser.menus.create({
+        browser.contextMenus.create({
             id: MenuIds.Root,
             contexts: ['image'],
             title: 'Send to Telegram',
         });
 
         this.uploadLinks.forEach((uploadLink: UploadLink) => {
-            browser.menus.create({
+            browser.contextMenus.create({
                 id: MenuIds.Destination + uploadLink.id,
                 parentId: MenuIds.Root,
                 contexts: ['image'],
@@ -43,47 +48,62 @@ export class ContextMenuManager {
             });
         });
 
-        browser.menus.create({
+        browser.contextMenus.create({
             id: MenuIds.Separator,
             type: 'separator',
             contexts: ['image'],
             parentId: MenuIds.Root,
         });
 
-        browser.menus.create({
+        browser.contextMenus.create({
             id: MenuIds.Settings,
             parentId: MenuIds.Root,
             contexts: ['image'],
             title: 'Settings',
         });
 
-        browser.menus.onClicked.addListener((info, tab) => this.callback(info, tab));
+        browser.contextMenus.onClicked.addListener((info, tab) =>
+            this.callback(info, tab),
+        );
 
         this.initialized = true;
     }
 
-    async callback(info: browser.menus.OnClickData, tab?: browser.tabs.Tab) {
+    async callback(
+        info: Browser.contextMenus.OnClickData,
+        tab?: Browser.tabs.Tab,
+    ) {
         if (info.targetElementId && tab?.id) {
             const menuItemId = info.menuItemId as unknown as string;
-            if (!menuItemId || !menuItemId?.startsWith(MenuIds.Prefix)) return;
+            if (!menuItemId?.startsWith(MenuIds.Prefix)) return;
             if (menuItemId === MenuIds.Settings) {
                 await browser.runtime.openOptionsPage();
                 return;
             } else if (menuItemId.startsWith(MenuIds.Destination)) {
-                const url = this.uploadLinks.find((uploadLink: UploadLink) => uploadLink.id === menuItemId.replace(MenuIds.Destination, ''))?.url;
+                const url = this.uploadLinks.find(
+                    (uploadLink: UploadLink) =>
+                        uploadLink.id ===
+                        menuItemId.replace(MenuIds.Destination, ''),
+                )?.url;
 
                 if (url) {
                     const dataUrl = await browser.tabs.sendMessage(tab.id, {
                         type: 'getImageMenusBase64',
                         targetElementId: info.targetElementId,
                     });
-                    console.log('[context menu background script] dataUrl:', dataUrl);
-                    await this.uploader.handleMessage({
-                        type: 'upload',
-                        method: 'photoBase64',
-                        data: dataUrl,
-                        endpoint: url,
-                    }, tab.id);
+                    console.log(
+                        '[context menu background script] dataUrl:',
+                        dataUrl,
+                    );
+                    await this.uploader.handleMessage(
+                        {
+                            type: 'upload',
+                            method: 'photoBase64',
+                            data: dataUrl,
+                            endpoint: url,
+                        },
+                        tab.id,
+                    );
                 }
             }
         }

@@ -1,30 +1,31 @@
-import { defineConfig, type WxtViteConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
+import { defineConfig, type WxtViteConfig } from 'wxt';
 
 export const extensionSlug = 'uploader@bakatrouble.me';
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
-    modules: [
-        '@wxt-dev/module-vue',
-        '@wxt-dev/auto-icons',
-    ],
+    modules: ['@wxt-dev/module-vue', '@wxt-dev/auto-icons'],
     autoIcons: {
         baseIconPath: 'public/default-icon.svg',
     },
     zip: {
-        excludeSources: [
-            'web-ext-artifacts/**/*',
-            'lib/imagehash/target/**/*',
-        ],
+        excludeSources: ['web-ext-artifacts/**/*', 'lib/imagehash/target/**/*'],
     },
     filterEntrypoints: [
-        'image-getter', 'background', 'options', 'popup', 'notifications', 'e621-favorites'
-    ].concat(process.env.NODE_ENV === 'development' ? ['notifications-test-page'] : []),
+        'image-getter',
+        'background',
+        'options',
+        'popup',
+        'notifications',
+        'e621-favorites',
+    ].concat(
+        process.env.NODE_ENV === 'development'
+            ? ['notifications-test-page']
+            : [],
+    ),
     vite: (): WxtViteConfig => ({
-        plugins: [
-            tailwindcss(),
-        ],
+        plugins: [tailwindcss()],
         build: {
             sourcemap: false,
             minify: false,

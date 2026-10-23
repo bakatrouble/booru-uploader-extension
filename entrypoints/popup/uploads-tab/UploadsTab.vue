@@ -1,16 +1,15 @@
 <script setup lang="ts">
-
-import SectionHeader from '../../../components/SectionHeader.vue';
-import TaskList from '@/entrypoints/popup/uploads-tab/TaskList.vue';
-import { testImage } from '@/entrypoints/popup/testImage';
-import AppButton from '../../../components/AppButton.vue';
 import { useMutation } from '@tanstack/vue-query';
+import { testImage } from '@/entrypoints/popup/testImage';
+import TaskList from '@/entrypoints/popup/uploads-tab/TaskList.vue';
+import AppButton from '../../../components/AppButton.vue';
+import SectionHeader from '../../../components/SectionHeader.vue';
 import type { UploadTask } from '../../background/uploader';
 
 const { queued, processed, port } = defineProps<{
     queued: UploadTask[];
     processed: UploadTask[];
-    port?: browser.runtime.Port;
+    port?: Browser.runtime.Port;
 }>();
 
 const loading = ref(false);
@@ -19,7 +18,7 @@ onMounted(() => {
     setInterval(() => {
         loading.value = !loading.value;
     }, 500);
-})
+});
 
 const { mutate: sendTestImage, isPending: isTestImageSending } = useMutation({
     mutationFn: async () => {

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import Tab from './Tab.vue';
 import AppButton from '../AppButton.vue';
+import Tab from './Tab.vue';
 
 const { initialTab } = defineProps<{ initialTab?: number }>();
 const emit = defineEmits<{ tabChange: [number] }>();
 
 const slots = defineSlots<{ default: () => any[] }>();
-const tabs = slots.default().filter(tab => tab?.type.__file === Tab.__file);
+const tabs = slots.default().filter((tab) => tab?.type.__file === Tab.__file);
 
 const activeTab = ref(initialTab || 0);
 </script>
@@ -26,10 +26,10 @@ const activeTab = ref(initialTab || 0);
 </template>
 
 <style scoped lang="sass">
-    .tab-bar
-        display: grid
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr))
-        gap: .5rem
-        padding: 0 1rem
-        margin: 0 0 1rem
+.tab-bar
+    display: grid
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr))
+    gap: .5rem
+    padding: 0 1rem
+    margin: 0 0 1rem
 </style>

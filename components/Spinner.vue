@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+
 const { size, color } = defineProps({
     size: {
         type: [Number, String],

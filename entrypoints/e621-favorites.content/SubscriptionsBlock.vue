@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useWebsite } from "./useWebsite";
+import { useWebsite } from './useWebsite';
 
 const { subscriptions, allTags, el } = defineProps<{
     subscriptions: string[];
@@ -8,12 +8,13 @@ const { subscriptions, allTags, el } = defineProps<{
 }>();
 
 const relevantSubscriptions = computed(() => {
-    return subscriptions.filter(sub => allTags.some(tag => {
-        // @ts-ignore
-        const escapedTag = RegExp.escape(tag);
-        const pattern = `(^-?|[{}|\\s])-?${escapedTag}($|[{}|\\s])`;
-        return new RegExp(pattern).test(sub);
-    }));
+    return subscriptions.filter((sub) =>
+        allTags.some((tag) => {
+            const escapedTag = RegExp.escape(tag);
+            const pattern = `(^-?|[{}|\\s])-?${escapedTag}($|[{}|\\s])`;
+            return new RegExp(pattern).test(sub);
+        }),
+    );
 });
 
 const website = useWebsite();

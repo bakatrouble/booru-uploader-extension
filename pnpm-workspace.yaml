@@ -1,8 +1,19 @@
 allowBuilds:
-  '@tailwindcss/oxide': true
-  core-js: true
-  esbuild: true
-  sharp: true
-  spawn-sync: true
-  vue-demi: true
-  wasm-pack: true
+    "@tailwindcss/oxide": true
+    core-js: true
+    esbuild: true
+    sharp: true
+    spawn-sync: true
+    vue-demi: true
+    wasm-pack: true
+overrides:
+    typescript: npm:typescript-native-bridge@6.0.3-bridge.19.tsgo.7.0.2
+minimumReleaseAgeExclude:
+    - "@typescript-native-bridge/darwin-arm64@6.0.3-bridge.19.tsgo.7.0.2"
+    - "@typescript-native-bridge/darwin-x64@6.0.3-bridge.19.tsgo.7.0.2"
+    - "@typescript-native-bridge/linux-arm64@6.0.3-bridge.19.tsgo.7.0.2"
+    - "@typescript-native-bridge/linux-arm@6.0.3-bridge.19.tsgo.7.0.2"
+    - "@typescript-native-bridge/linux-x64@6.0.3-bridge.19.tsgo.7.0.2"
+    - "@typescript-native-bridge/win32-arm64@6.0.3-bridge.19.tsgo.7.0.2"
+    - "@typescript-native-bridge/win32-x64@6.0.3-bridge.19.tsgo.7.0.2"
+    - typescript-native-bridge@6.0.3-bridge.19.tsgo.7.0.2

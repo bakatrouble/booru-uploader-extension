@@ -1,25 +1,41 @@
 import ky from 'ky';
 
-type RuntimeMessage = {
-    type: 'fetchSubscriptions',
-} | {
-    type: 'addSubscription', tag: string, website: string
-} | {
-    type: 'removeSubscription', tag: string, website: string
-}
+type RuntimeMessage =
+    | {
+          type: 'fetchSubscriptions';
+      }
+    | {
+          type: 'addSubscription';
+          tag: string;
+          website: string;
+      }
+    | {
+          type: 'removeSubscription';
+          tag: string;
+          website: string;
+      };
+
+export const resolveApiKey = (stored: unknown): string | undefined => {
+    if (typeof stored === 'string' && stored) {
+        return stored;
+    }
+    return import.meta.env.VITE_API_KEY || undefined;
+};
 
 export class SubscriptionsFetcher {
     subscriptions: Record<string, string[]> = {};
-    ports = new Set<browser.runtime.Port>();
+    ports = new Set<Browser.runtime.Port>();
 
     constructor() {
-        browser.runtime.onConnect.addListener(port => {
+        browser.runtime.onConnect.addListener((port) => {
             if (port.name === 'subscriptions') {
                 return this.handlePortConnection(port);
             }
             return false;
         });
-        browser.runtime.onMessage.addListener(this.handleMessage)
+        browser.runtime.onMessage.addListener((msg, sender, sendResponse) =>
+            this.handleMessage(msg, sender, sendResponse),
+        );
 
         // noinspection JSIgnoredPromiseFromCall
         this.fetchSubscriptions();
@@ -28,14 +44,13 @@ export class SubscriptionsFetcher {
 
     get client() {
         return ky.create({
-            prefixUrl: 'https://e621.bakatrouble.me/api',
+            prefix: 'https://e621.bakatrouble.me/api',
             hooks: {
                 beforeRequest: [
-                    async (request) => {
-                        let { apiKey } = await browser.storage.sync.get('apiKey');
-                        if (!apiKey) {
-                            apiKey = import.meta.env.VITE_API_KEY;
-                        }
+                    async ({ request }) => {
+                        const { apiKey: stored } =
+                            await browser.storage.sync.get('apiKey');
+                        const apiKey = resolveApiKey(stored);
                         if (apiKey) {
                             request.headers.set('X-API-Key', apiKey);
                         } else {
@@ -48,13 +63,19 @@ export class SubscriptionsFetcher {
     }
 
     async fetchSubscriptions() {
-        const { apiKey } = await browser.storage.sync.get('apiKey') || import.meta.env.VITE_API_KEY;
-        if (!apiKey)
-            return [];
-        const [{ subscriptions: e621 }, { subscriptions: gelbooru }] = await Promise.all([
-            this.client.get('subscriptions?website=e621').json(),
-            this.client.get('subscriptions?website=gelbooru').json(),
-        ]) as { subscriptions: string[] }[];
+        const { apiKey: storedApiKey } =
+            await browser.storage.sync.get('apiKey');
+        const apiKey = resolveApiKey(storedApiKey);
+        if (!apiKey) return [];
+        const [{ subscriptions: e621 }, { subscriptions: gelbooru }] =
+            await Promise.all([
+                this.client
+                    .get('subscriptions?website=e621')
+                    .json<{ subscriptions: string[] }>(),
+                this.client
+                    .get('subscriptions?website=gelbooru')
+                    .json<{ subscriptions: string[] }>(),
+            ]);
         this.subscriptions.e621 = e621;
         this.subscriptions.gelbooru = gelbooru;
         for (const port of this.ports) {
@@ -62,7 +83,7 @@ export class SubscriptionsFetcher {
         }
     }
 
-    handlePortConnection(port: browser.runtime.Port) {
+    handlePortConnection(port: Browser.runtime.Port) {
         this.ports.add(port);
 
         port.postMessage({ subscriptions: this.subscriptions });
@@ -72,27 +93,32 @@ export class SubscriptionsFetcher {
         });
     }
 
-    handleMessage = (
+    handleMessage(
         msg: RuntimeMessage,
-        sender: browser.runtime.MessageSender,
+        _sender: Browser.runtime.MessageSender,
         sendResponse: (response?: any) => void,
-    ) => {
+    ) {
         switch (msg.type) {
             case 'fetchSubscriptions':
-                this.fetchSubscriptions()
-                    .finally(() => {
-                        sendResponse(true);
-                    });
+                this.fetchSubscriptions().finally(() => {
+                    sendResponse(true);
+                });
                 break;
             case 'addSubscription':
-                this.client.post(`subscriptions?website=${msg.website}`, { json: { subs: [msg.tag] } })
+                this.client
+                    .post(`subscriptions?website=${msg.website}`, {
+                        json: { subs: [msg.tag] },
+                    })
                     .then(() => this.fetchSubscriptions())
                     .finally(() => {
                         sendResponse(true);
                     });
                 break;
             case 'removeSubscription':
-                this.client.delete(`subscriptions?website=${msg.website}`, { json: { subs: [msg.tag] } })
+                this.client
+                    .delete(`subscriptions?website=${msg.website}`, {
+                        json: { subs: [msg.tag] },
+                    })
                     .then(() => this.fetchSubscriptions())
                     .finally(() => {
                         sendResponse(true);

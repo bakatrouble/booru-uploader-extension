@@ -14,7 +14,7 @@ const createNotification = async () => {
         message: 'message',
     });
     console.log(message.value);
-}
+};
 
 const finishNotification = (level: NotificationLevel) => {
     if (message.value) {
@@ -26,7 +26,7 @@ const finishNotification = (level: NotificationLevel) => {
         });
         message.value = undefined;
     }
-}
+};
 
 const test3 = async () => {
     n.value?.pushNotification({
@@ -45,14 +45,16 @@ const test3 = async () => {
         message: 'message',
     });
     setTimeout(() => {
-        n.value?.updateNotification({
-            id: id,
-            level: NotificationLevel.Success,
-            title: 'title',
-            message: 'level changed',
-        });
+        if (id) {
+            n.value?.updateNotification({
+                id: id,
+                level: NotificationLevel.Success,
+                title: 'title',
+                message: 'level changed',
+            });
+        }
     }, 500);
-}
+};
 
 const test4 = async () => {
     const id1 = await n.value?.pushNotification({
@@ -71,20 +73,24 @@ const test4 = async () => {
         message: 'message',
     });
     setTimeout(() => {
-        n.value?.updateNotification({
-            id: id1,
-            level: NotificationLevel.Success,
-            title: 'title',
-            message: 'level changed',
-        });
-        n.value?.updateNotification({
-            id: id2,
-            level: NotificationLevel.Success,
-            title: 'title',
-            message: 'level changed',
-        });
+        if (id1) {
+            n.value?.updateNotification({
+                id: id1,
+                level: NotificationLevel.Success,
+                title: 'title',
+                message: 'level changed',
+            });
+        }
+        if (id2) {
+            n.value?.updateNotification({
+                id: id2,
+                level: NotificationLevel.Success,
+                title: 'title',
+                message: 'level changed',
+            });
+        }
     }, 500);
-}
+};
 </script>
 
 <template>

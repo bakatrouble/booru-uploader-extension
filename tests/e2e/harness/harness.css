@@ -1,0 +1,21 @@
+@import '@/assets/tailwind.css';
+
+/* The harness root is tests/e2e/harness, but the components' Tailwind
+   classes live in entrypoints/ and components/. Point the scanner at all
+   three so the utilities the components use are generated. */
+@source '../../../entrypoints';
+@source '../../../components';
+@source '.';
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    background: #242424;
+    color: #fff;
+}
+
+#tasks,
+#notifs {
+    width: 420px;
+}

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import { mdiClose } from '@mdi/js';
+import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import ky from 'ky';
+import { inject, type Ref, ref } from 'vue';
 
 const { query, website } = defineProps<{
     query: string;
@@ -12,12 +13,12 @@ const queryClient = useQueryClient();
 const authToken = inject<Ref<string | undefined>>('e621-auth-token', ref());
 
 const client = ky.extend({
-    prefixUrl: 'https://e621.bakatrouble.me/api',
+    prefix: 'https://e621.bakatrouble.me/api',
     hooks: {
         beforeRequest: [
-            (request) => {
+            (state) => {
                 if (authToken.value) {
-                    request.headers.set('Authorization', authToken.value);
+                    state.request.headers.set('X-API-Key', authToken.value);
                 }
             },
         ],
@@ -26,18 +27,16 @@ const client = ky.extend({
 
 const { mutate: doDelete, isPending: isDeleting } = useMutation({
     mutationFn: () => {
-        return client(
-            `https://e621.bakatrouble.me/api/subscriptions?webiste=${website}`,
-            {
+        return client
+            .delete(`subscriptions?website=${website}`, {
                 json: { subs: [query] },
-            },
-        ).json();
+            })
+            .json();
     },
     onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['e621-subs'] });
+        queryClient.invalidateQueries({ queryKey: ['subs', website] });
     },
 });
-
 </script>
 
 <template>

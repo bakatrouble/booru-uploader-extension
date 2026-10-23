@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
-import SectionHeader from '../../../components/SectionHeader.vue';
-import Modal from '../../../components/Modal.vue';
-import AppButton from '../../../components/AppButton.vue';
-import SubscriptionItem from '@/entrypoints/popup/e621-tab/SubscriptionItem.vue';
 import { useVirtualList } from '@vueuse/core';
-import { useSyncStorage } from '@/utils/useSyncStorage';
 import ky, { HTTPError } from 'ky';
+import SubscriptionItem from '@/entrypoints/popup/e621-tab/SubscriptionItem.vue';
+import { useSyncStorage } from '@/utils/useSyncStorage';
+import AppButton from '../../../components/AppButton.vue';
+import Modal from '../../../components/Modal.vue';
+import SectionHeader from '../../../components/SectionHeader.vue';
 
 const { website } = defineProps<{
     website: string;
@@ -20,31 +20,40 @@ const filter = ref('');
 
 const queryClient = useQueryClient();
 
-const { storage: authToken, ready: authTokenReady } = useSyncStorage('apiKey', import.meta.env.VITE_API_KEY || '');
+const { storage: authToken, ready: authTokenReady } = useSyncStorage(
+    'apiKey',
+    import.meta.env.VITE_API_KEY || '',
+);
 const isAuthenticated = computed(() => !!authToken.value);
 provide('e621-auth-token', authToken);
 
 const client = ky.extend({
-    prefixUrl: 'https://e621.bakatrouble.me/api',
+    prefix: 'https://e621.bakatrouble.me/api',
     hooks: {
         beforeRequest: [
-            (request) => {
+            (state) => {
                 if (authToken.value) {
-                    request.headers.set('X-API-Key', authToken.value);
+                    state.request.headers.set('X-API-Key', authToken.value);
                 }
             },
         ],
     },
 });
 
-const { mutate: signIn, isPending: signInPending, error: signInError } = useMutation({
+const {
+    mutate: signIn,
+    isPending: signInPending,
+    error: signInError,
+} = useMutation({
     mutationFn: async () => {
         try {
-            await client.get(`subscriptions?website=${website}`, {
-                headers: {
-                    'X-API-Key': apiKeyInput.value
-                }
-            }).json();
+            await client
+                .get(`subscriptions?website=${website}`, {
+                    headers: {
+                        'X-API-Key': apiKeyInput.value,
+                    },
+                })
+                .json();
             return true;
         } catch (e) {
             if (e instanceof HTTPError) {
@@ -69,8 +78,8 @@ const { mutate: signIn, isPending: signInPending, error: signInError } = useMuta
 const { mutate: signOut } = useMutation({
     mutationFn: async () => {
         authToken.value = null;
-    }
-})
+    },
+});
 
 const { data, isLoading, error } = useQuery({
     queryKey: ['subs', website],
@@ -78,18 +87,25 @@ const { data, isLoading, error } = useQuery({
         if (!authToken.value) {
             return [];
         }
-        const data = await client.get(`subscriptions?website=${website}`).json() as { subscriptions: string[] };
+        const data = (await client
+            .get(`subscriptions?website=${website}`)
+            .json()) as { subscriptions: string[] };
         return data.subscriptions as string[];
     },
     enabled: isAuthenticated,
 });
 const filteredData = computed(() => {
     if (!data.value) return [];
-    return data.value.filter(query => query.toLowerCase().includes(filter.value.toLowerCase()));
+    return data.value.filter((query) =>
+        query.toLowerCase().includes(filter.value.toLowerCase()),
+    );
 });
-const { list, containerProps, wrapperProps, scrollTo } = useVirtualList(filteredData, {
-    itemHeight: 29,
-});
+const { list, containerProps, wrapperProps, scrollTo } = useVirtualList(
+    filteredData,
+    {
+        itemHeight: 29,
+    },
+);
 watch([filter], () => {
     scrollTo(0);
 });
@@ -99,22 +115,20 @@ const { mutate: addSubscription, isPending: addPending } = useMutation({
         if (!authToken.value) {
             throw new Error('Not authenticated');
         }
-        return client.post(
-            `subscriptions?website=${website}`,
-            {
+        return client
+            .post(`subscriptions?website=${website}`, {
                 json: {
-                    subs: [newSubscription.value]
+                    subs: [newSubscription.value],
                 },
-            },
-        ).json();
+            })
+            .json();
     },
     onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['e621-subs'] });
+        queryClient.invalidateQueries({ queryKey: ['subs', website] });
         addModalOpen.value = false;
         newSubscription.value = '';
     },
 });
-
 </script>
 
 <template>

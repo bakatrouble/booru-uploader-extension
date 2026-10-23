@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useMutation } from '@tanstack/vue-query';
-import { useWebsite } from "./useWebsite";
+import { useWebsite } from './useWebsite';
 
 const { el, tag, subscriptions, loading } = defineProps<{
     el: HTMLElement;

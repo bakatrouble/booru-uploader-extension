@@ -1,0 +1,62 @@
+{
+    "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    },
+    "formatter": {
+        "indentStyle": "space",
+        "lineWidth": 80,
+        "indentWidth": 4
+    },
+    "linter": {
+        "rules": {
+            "suspicious": {
+                "noExplicitAny": "off",
+                "noUnknownAtRules": "off"
+            },
+            "complexity": {
+                "noStaticOnlyClass": "off"
+            },
+            "style": {
+                "noNonNullAssertion": "off"
+            }
+        }
+    },
+    "javascript": {
+        "formatter": {
+            "quoteStyle": "single",
+            "lineWidth": 80
+        }
+    },
+    "overrides": [
+        {
+            "includes": [
+                "pnpm-lock.yaml",
+                "assets/tailwind.css",
+                "public/**",
+                "tests/e2e/harness/harness.css",
+                "tests/e2e/harness/public/**"
+            ],
+            "formatter": { "enabled": false },
+            "linter": { "enabled": false },
+            "assist": { "enabled": false }
+        },
+        {
+            "includes": ["**/*.vue"],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "useConst": "off",
+                        "useImportType": "off"
+                    },
+                    "correctness": {
+                        "noUnusedVariables": "off",
+                        "noUnusedImports": "off"
+                    }
+                }
+            }
+        }
+    ]
+}

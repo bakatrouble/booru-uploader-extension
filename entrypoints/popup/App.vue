@@ -1,18 +1,20 @@
 <script lang="ts" setup>
-
-import TabBar from '@/components/tabs/TabBar.vue';
 import Tab from '@/components/tabs/Tab.vue';
+import TabBar from '@/components/tabs/TabBar.vue';
 import UploadsTab from '@/entrypoints/popup/uploads-tab/UploadsTab.vue';
-import SubscriptionsTab from './e621-tab/SubscriptionsTab.vue';
 import { useSyncStorage } from '@/utils/useSyncStorage';
 import Spinner from '../../components/Spinner.vue';
 import type { UploadTask } from '../background/uploader';
+import SubscriptionsTab from './e621-tab/SubscriptionsTab.vue';
 
 const queued = ref<UploadTask[]>([]);
 const processed = ref<UploadTask[]>([]);
-const port = ref<browser.runtime.Port>();
+const port = ref<Browser.runtime.Port>();
 
-const { storage: initialTab, ready: initialTabReady } = useSyncStorage('initialTab', 0);
+const { storage: initialTab, ready: initialTabReady } = useSyncStorage(
+    'initialTab',
+    0,
+);
 
 onMounted(() => {
     port.value = browser.runtime.connect({ name: 'uploader' });
@@ -25,7 +27,7 @@ onMounted(() => {
             return null;
         }
     });
-})
+});
 </script>
 
 <template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { uuidv4 } from 'uuidv7';
+import { onMounted, ref } from 'vue';
 import { NotificationLevel } from '@/utils/enums';
 import Spinner from '../../components/Spinner.vue';
 
@@ -9,9 +10,11 @@ const NOTIFICATION_DURATION = 5000;
 
 const planNotificationRemoval = (id: string) => {
     setTimeout(() => {
-        notifications.value = notifications.value.filter((item) => item.id !== id)
+        notifications.value = notifications.value.filter(
+            (item) => item.id !== id,
+        );
     }, NOTIFICATION_DURATION);
-}
+};
 
 const pushNotification = async (options: NotificationOptions) => {
     const id = uuidv4();
@@ -24,19 +27,20 @@ const pushNotification = async (options: NotificationOptions) => {
         planNotificationRemoval(id);
     }
     return id;
-}
+};
 
 const updateNotification = async (options: UpdateNotificationOptions) => {
-    const idx = notifications.value.findIndex(n => n.id === options.id);
+    const idx = notifications.value.findIndex((n) => n.id === options.id);
     if (idx !== -1) {
-        notifications.value[idx].level = options.level;
-        notifications.value[idx].message = options.message;
-        notifications.value[idx].title = options.title;
+        const entry = notifications.value[idx]!;
+        entry.level = options.level;
+        entry.message = options.message;
+        entry.title = options.title;
         if (options.level !== NotificationLevel.Loading) {
             planNotificationRemoval(options.id);
         }
     }
-}
+};
 
 const messageHandler = (message: RuntimeMessage) => {
     if (message.type === 'notification') {
@@ -44,7 +48,7 @@ const messageHandler = (message: RuntimeMessage) => {
     } else if (message.type === 'update-notification') {
         return updateNotification(message.options);
     }
-}
+};
 
 onMounted(() => {
     browser?.runtime.onMessage.addListener(messageHandler);
@@ -91,7 +95,6 @@ defineExpose({
 </template>
 
 <style lang="css">
-@layer theme, base, components, utitlities;
 @reference "../../assets/tailwind.css";
 
 @layer components {
