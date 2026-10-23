@@ -100,11 +100,18 @@ defineExpose({
 @layer components {
     .notifications-container {
         @apply
-            z-(--base-z-index)
             fixed
             right-4
             bottom-4
             transition-all;
+        /* Do not use var() here, with or without a fallback: the build
+           normalizes `var(--base-z-index, ...)` against the @theme
+           value, and `:root` custom properties do not apply inside
+           shadow DOM anyway, so the z-index would collapse (to `auto`
+           or to a tie with the viewer) and paint order would decide
+           stacking. The lightbox viewer sits at 100000000; this stays
+           exactly one above it. */
+        z-index: 100000001;
     }
 
     .notification {

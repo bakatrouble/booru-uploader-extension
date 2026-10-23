@@ -31,13 +31,14 @@ export const fitDimensionSum = (
     };
 };
 
-const renderInWorker = (
+const renderInWorker = async (
     bitmap: ImageBitmap,
     width: number,
     height: number,
-): Promise<ArrayBuffer> =>
-    new Promise((resolve, reject) => {
-        const worker = new Worker(browser.runtime.getURL('/encode-worker.js'));
+): Promise<ArrayBuffer> => {
+    const workerUrl = await resolveWorkerUrl();
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(workerUrl);
         const timeout = setTimeout(() => {
             worker.terminate();
             reject(new Error('JPEG worker timed out'));
@@ -54,10 +55,47 @@ const renderInWorker = (
         worker.onerror = (e: ErrorEvent) => {
             clearTimeout(timeout);
             worker.terminate();
-            reject(e.error ?? new Error('JPEG worker error'));
+            const detail = [
+                e.error instanceof Error ? e.error.message : null,
+                typeof e.message === 'string' && e.message ? e.message : null,
+                [e.filename, e.lineno]
+                    .filter((part) => part !== '' && part != null)
+                    .join(':') || null,
+            ].filter(Boolean);
+            reject(
+                new Error(
+                    `JPEG worker failed${detail.length ? `: ${detail.join(' ')}` : ''}`,
+                ),
+            );
         };
         worker.postMessage({ bitmap, width, height }, [bitmap]);
     });
+};
+
+/**
+ * Verifies the worker script actually shipped in the build before
+ * spawning it. A missing file (stale build, packaging slip) otherwise
+ * surfaces as a bare worker `error` event with no usable detail.
+ */
+const resolveWorkerUrl = async (): Promise<string> => {
+    const url = browser.runtime.getURL('/encode-worker.js');
+    let response: Response;
+    try {
+        response = await fetch(url);
+    } catch (error) {
+        throw new Error(
+            `JPEG worker script not found in the built extension (tried ${url}; is public/encode-worker.js included?): ${
+                error instanceof Error ? error.message : error
+            }`,
+        );
+    }
+    if (!response.ok) {
+        throw new Error(
+            `JPEG worker script not found in the built extension (HTTP ${response.status} for ${url}); rebuild with \`pnpm build\``,
+        );
+    }
+    return url;
+};
 
 export const renderImageToJpegBuffer = async (
     el: HTMLImageElement,

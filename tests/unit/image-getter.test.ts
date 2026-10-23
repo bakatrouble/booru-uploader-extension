@@ -40,7 +40,16 @@ const stubWorkerEnv = () => {
         'createImageBitmap',
         vi.fn(async () => ({})),
     );
+    vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: true }) as Response),
+    );
     FakeWorker.instances = [];
+};
+
+const unstubWorkerEnv = () => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal('browser', stubBrowser);
 };
 
 describe('resolveSelectorTarget', () => {
@@ -107,8 +116,7 @@ describe('ArrayBuffer message handlers', () => {
             });
             await expect(pending).resolves.toBe(buffer);
         } finally {
-            vi.unstubAllGlobals();
-            vi.stubGlobal('browser', stubBrowser);
+            unstubWorkerEnv();
             vi.restoreAllMocks();
         }
     });
@@ -130,8 +138,7 @@ describe('ArrayBuffer message handlers', () => {
             expect(result).toBeInstanceOf(ArrayBuffer);
             expect(Array.from(new Uint8Array(result))).toEqual([4, 5, 6]);
         } finally {
-            vi.unstubAllGlobals();
-            vi.stubGlobal('browser', stubBrowser);
+            unstubWorkerEnv();
             vi.restoreAllMocks();
         }
     });
@@ -150,8 +157,7 @@ describe('ArrayBuffer message handlers', () => {
             });
             await expect(pending).rejects.toThrow('boom');
         } finally {
-            vi.unstubAllGlobals();
-            vi.stubGlobal('browser', stubBrowser);
+            unstubWorkerEnv();
             vi.restoreAllMocks();
         }
     });

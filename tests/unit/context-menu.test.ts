@@ -169,6 +169,30 @@ describe('ContextMenuManager.callback', () => {
         expect(uploader.handleMessage).not.toHaveBeenCalled();
     });
 
+    it('notifies the user when encoding or upload fails', async () => {
+        const { manager, uploader } = makeManager();
+        await flushInit();
+        const buffer = new Uint8Array([1, 2, 3]).buffer;
+        stubBrowser.tabs.sendMessage.mockResolvedValueOnce(buffer);
+        uploader.handleMessage.mockRejectedValueOnce(
+            new Error('JPEG worker failed'),
+        );
+        await manager.callback(
+            {
+                menuItemId: `${MenuIds.Destination}l1`,
+                targetElementId: 5,
+            } as never,
+            { id: 9 } as never,
+        );
+        expect(stubBrowser.tabs.sendMessage).toHaveBeenCalledWith(9, {
+            type: 'notification',
+            options: {
+                level: 'error',
+                message: 'Upload failed: JPEG worker failed',
+            },
+        });
+    });
+
     it('registers the callback on the menus click event', async () => {
         const { manager } = makeManager();
         await flushInit();

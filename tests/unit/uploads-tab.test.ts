@@ -29,24 +29,42 @@ const mountTab = (queued: UploadTask[] = [], processed: UploadTask[] = []) =>
     });
 
 describe('UploadsTab', () => {
-    it('dev build exposes a test-upload button sending photoBase64', async () => {
-        const wrapper = mountTab();
-        const button = wrapper
-            .findAll('button')
-            .find((candidate) => candidate.text() === 'test');
-        expect(button?.exists()).toBe(true);
-
-        await button!.trigger('click');
-        await vi.waitFor(() =>
-            expect(stubBrowser.runtime.sendMessage).toHaveBeenCalled(),
+    it('dev build exposes a test-upload button sending the file bytes', async () => {
+        const bytes = new Uint8Array([137, 80, 78, 71]);
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => new Response(bytes.buffer as ArrayBuffer)),
         );
-        expect(stubBrowser.runtime.sendMessage).toHaveBeenCalledWith({
-            type: 'upload',
-            method: 'photoBase64',
-            data: expect.any(String),
-            endpoint: undefined,
-        });
-        wrapper.unmount();
+        try {
+            const wrapper = mountTab();
+            const button = wrapper
+                .findAll('button')
+                .find((candidate) => candidate.text() === 'test');
+            expect(button?.exists()).toBe(true);
+
+            await button!.trigger('click');
+            await vi.waitFor(() =>
+                expect(stubBrowser.runtime.sendMessage).toHaveBeenCalled(),
+            );
+            const [message] = stubBrowser.runtime.sendMessage.mock
+                .calls[0] as unknown as [
+                {
+                    type: string;
+                    method: string;
+                    data: unknown;
+                    mimeType: string;
+                },
+            ];
+            expect(message.type).toBe('upload');
+            expect(message.method).toBe('photoArrayBuffer');
+            expect(message.mimeType).toBe('image/jpeg');
+            expect(message.data).toBeInstanceOf(ArrayBuffer);
+            expect(new Uint8Array(message.data as ArrayBuffer)).toEqual(bytes);
+            wrapper.unmount();
+        } finally {
+            vi.unstubAllGlobals();
+            vi.stubGlobal('browser', stubBrowser);
+        }
     });
 
     it('forwards remove and retry events to the port', async () => {

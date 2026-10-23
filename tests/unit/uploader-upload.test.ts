@@ -50,6 +50,9 @@ const makeUploader = () => {
     uploader.ports = new Set();
     uploader.imageHashes = {};
     uploader.uploadGate = new Semaphore(3);
+    (uploader as unknown as { db: unknown }).db = undefined;
+    (uploader as unknown as { dbReady: Promise<unknown> }).dbReady =
+        Promise.resolve(undefined);
     (uploader as unknown as { hasherWorker: unknown }).hasherWorker = {
         postMessage: vi.fn(),
         addEventListener: vi.fn(),
@@ -208,6 +211,44 @@ describe('Uploader.handleMessage photo uploads', () => {
 
         release();
         await pending;
+        expect(uploader.queuedTasks.items).toHaveLength(1);
+    });
+
+    it('waits for the database before storing anything', async () => {
+        // Simulates an upload landing before the async idb open
+        // completes: without the ensureDb gate the blob, thumbnail and
+        // duplicate bookkeeping would silently vanish.
+        let resolveDb!: (db: unknown) => void;
+        (uploader as unknown as { db: unknown }).db = undefined;
+        (uploader as unknown as { dbReady: Promise<unknown> }).dbReady =
+            new Promise((resolve) => {
+                resolveDb = resolve;
+            });
+
+        const pending = uploader.handleMessage(
+            {
+                type: 'upload',
+                endpoint: 'https://example.test',
+                method: 'photoArrayBuffer',
+                data: new Uint8Array([1, 2, 3]).buffer,
+            } as never,
+            undefined,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(dbPut).not.toHaveBeenCalled();
+        expect(uploader.queuedTasks.items).toEqual([]);
+
+        resolveDb({
+            put: dbPut,
+            get: vi.fn(async () => new Blob(['full'])),
+            delete: dbDelete,
+        });
+        await pending;
+        expect(dbPut).toHaveBeenCalledWith(
+            'images',
+            expect.any(Blob),
+            expect.any(String),
+        );
         expect(uploader.queuedTasks.items).toHaveLength(1);
     });
 

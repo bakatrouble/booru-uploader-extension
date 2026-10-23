@@ -1,4 +1,5 @@
 import type { Uploader } from '../entrypoints/background/uploader';
+import { NotificationLevel } from './enums';
 
 export const MenuIds = {
     Prefix: 'send-to-tg-',
@@ -90,36 +91,55 @@ export class ContextMenuManager {
                 )?.url;
 
                 if (url) {
-                    let buffer: ArrayBuffer;
+                    let failure: unknown;
                     try {
-                        buffer = await browser.tabs.sendMessage(tab.id, {
-                            type: 'getImageMenusArrayBuffer',
-                            targetElementId: info.targetElementId,
-                        });
-                    } catch (e) {
-                        // No content script in the tab (chrome:// pages,
-                        // PDFs, …) or the render failed: nothing to upload.
-                        console.error(
-                            '[context menu] cannot get image bytes from tab',
-                            tab.id,
-                            e,
+                        const buffer: ArrayBuffer =
+                            await browser.tabs.sendMessage(tab.id, {
+                                type: 'getImageMenusArrayBuffer',
+                                targetElementId: info.targetElementId,
+                            });
+                        console.log(
+                            '[context menu background script] bytes:',
+                            buffer?.byteLength,
                         );
-                        return;
+                        await this.uploader.handleMessage(
+                            {
+                                type: 'upload',
+                                method: 'photoArrayBuffer',
+                                data: buffer,
+                                mimeType: 'image/jpeg',
+                                endpoint: url,
+                            },
+                            tab.id,
+                        );
+                    } catch (e) {
+                        failure = e;
                     }
-                    console.log(
-                        '[context menu background script] bytes:',
-                        buffer?.byteLength,
-                    );
-                    await this.uploader.handleMessage(
-                        {
-                            type: 'upload',
-                            method: 'photoArrayBuffer',
-                            data: buffer,
-                            mimeType: 'image/jpeg',
-                            endpoint: url,
-                        },
-                        tab.id,
-                    );
+                    if (failure !== undefined) {
+                        // Covers an unreachable content script (chrome://
+                        // pages, PDFs, …) as well as a failed render or
+                        // upload: surface it instead of failing silent.
+                        const reason =
+                            failure instanceof Error
+                                ? failure.message
+                                : String(failure);
+                        console.error(
+                            '[context menu] upload failed for tab',
+                            tab.id,
+                            failure,
+                        );
+                        try {
+                            await browser.tabs.sendMessage(tab.id, {
+                                type: 'notification',
+                                options: {
+                                    level: NotificationLevel.Error,
+                                    message: `Upload failed: ${reason}`,
+                                },
+                            });
+                        } catch {
+                            // The tab cannot even show the notification.
+                        }
+                    }
                 }
             }
         }

@@ -33,6 +33,54 @@ const mountList = (tasks: UploadTask[]) =>
     });
 
 describe('TaskList', () => {
+    it('keeps the right thumbnail when tasks before it are removed', async () => {
+        mockedReadThumbnail.mockImplementation(
+            async (id: string) => new Blob([`img-${id}`]),
+        );
+        const created: Array<{ blob: Blob; url: string }> = [];
+        let counter = 0;
+        const realCreateObjectURL = URL.createObjectURL;
+        URL.createObjectURL = vi.fn((blob: Blob) => {
+            const url = `blob:thumb-${counter++}`;
+            created.push({ blob, url });
+            return url;
+        }) as never;
+        const textOf = async (url: string) =>
+            created.find((entry) => entry.url === url)!.blob.text();
+        try {
+            const wrapper = mountList([
+                makeTask('a', 'photoFile', 'complete'),
+                makeTask('b', 'photoFile', 'complete'),
+            ]);
+            await vi.waitFor(() => {
+                expect(wrapper.findAll('.task-cell img')).toHaveLength(2);
+            });
+            const firstSrc = wrapper
+                .findAll('.task-cell')
+                .at(0)!
+                .find('img')
+                .attributes('src')!;
+            expect(await textOf(firstSrc)).toBe('img-a');
+
+            await wrapper.setProps({
+                tasks: [makeTask('b', 'photoFile', 'complete')],
+            });
+            await vi.waitFor(() => {
+                expect(wrapper.findAll('.task-cell')).toHaveLength(1);
+            });
+            const remainingSrc = wrapper
+                .find('.task-cell')
+                .find('img')
+                .attributes('src');
+            // Without :key the surviving cell reuses the first instance
+            // and keeps showing task A's thumbnail.
+            expect(await textOf(remainingSrc!)).toBe('img-b');
+            wrapper.unmount();
+        } finally {
+            URL.createObjectURL = realCreateObjectURL as never;
+        }
+    });
+
     it('renders one cell per task with its status', () => {
         const wrapper = mountList([
             makeTask('a', 'photoUrl', 'queued'),

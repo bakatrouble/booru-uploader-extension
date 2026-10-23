@@ -71,6 +71,10 @@ const stubWorkerEnv = (bitmap = {}) => {
         'createImageBitmap',
         vi.fn(async () => bitmap),
     );
+    vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: true }) as Response),
+    );
     return bitmap;
 };
 
@@ -81,10 +85,13 @@ const loadedImage = (width = 8000, height = 6000) => {
     return img;
 };
 
-afterEach(() => {
+const unstubWorkerEnv = () => {
     vi.unstubAllGlobals();
-    // setup.ts stubs the `browser` global for every file; keep it alive.
     vi.stubGlobal('browser', stubBrowser);
+};
+
+afterEach(() => {
+    unstubWorkerEnv();
     vi.restoreAllMocks();
     FakeWorker.instances = [];
 });
@@ -155,5 +162,56 @@ describe('renderImageToJpegBuffer', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('rejects with a build hint when the worker file is missing', async () => {
+        vi.stubGlobal('Worker', FakeWorker);
+        vi.stubGlobal(
+            'createImageBitmap',
+            vi.fn(async () => ({})),
+        );
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => ({ ok: false, status: 404 })),
+        );
+
+        const pending = renderImageToJpegBuffer(loadedImage());
+        await expect(pending).rejects.toThrow(
+            /not found in the built extension/,
+        );
+        expect(FakeWorker.instances).toHaveLength(0);
+    });
+
+    it('rejects with a build hint when the worker file is unreachable', async () => {
+        vi.stubGlobal('Worker', FakeWorker);
+        vi.stubGlobal(
+            'createImageBitmap',
+            vi.fn(async () => ({})),
+        );
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => {
+                throw new TypeError('Failed to fetch');
+            }),
+        );
+
+        const pending = renderImageToJpegBuffer(loadedImage());
+        await expect(pending).rejects.toThrow(/not found in the built/);
+        expect(FakeWorker.instances).toHaveLength(0);
+    });
+
+    it('reports worker error details instead of a bare failure', async () => {
+        stubWorkerEnv();
+
+        const pending = renderImageToJpegBuffer(loadedImage());
+        await vi.waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+        FakeWorker.instances[0]!.onerror!({
+            message: 'Script error.',
+            filename: 'encode-worker.js',
+            lineno: 0,
+        } as ErrorEvent);
+        await expect(pending).rejects.toThrow(
+            /JPEG worker failed: Script error\. encode-worker\.js:0/,
+        );
     });
 });

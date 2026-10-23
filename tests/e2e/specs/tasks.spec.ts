@@ -49,3 +49,33 @@ test('failed-only filter narrows the processed list', async ({ page }) => {
     await expect(processedList.locator('.task-cell')).toHaveCount(1);
     await expect(processedList.locator('.task-cell')).toContainText('failed');
 });
+
+test('dev test-upload button sends the image bytes', async ({ page }) => {
+    await page.getByRole('button', { name: 'test' }).click();
+    await page.waitForFunction(() => (window as any).__sentMessages.length > 0);
+    const message = await page.evaluate(() => {
+        const [msg] = (window as any).__sentMessages.at(-1) as [
+            {
+                type: string;
+                method: string;
+                data: ArrayBuffer;
+                mimeType: string;
+            },
+        ];
+        return {
+            type: msg.type,
+            method: msg.method,
+            mimeType: msg.mimeType,
+            byteLength: msg.data.byteLength,
+            isArrayBuffer: msg.data instanceof ArrayBuffer,
+        };
+    });
+    expect(message).toEqual({
+        type: 'upload',
+        method: 'photoArrayBuffer',
+        mimeType: 'image/jpeg',
+        byteLength: expect.any(Number),
+        isArrayBuffer: true,
+    });
+    expect(message.byteLength).toBeGreaterThan(0);
+});

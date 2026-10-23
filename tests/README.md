@@ -35,10 +35,10 @@
   (upload/getUploadLinks/updateContextMenu); port connect/message/disconnect;
   `computeHash` ignoring stale worker responses (pins the fixed id-matching).
 - `uploader-upload.test.ts` — `handleMessage` photo paths: full blob +
-  thumbnail stored at intake (no object URLs), base64 with/without the
+  thumbnail stored atomically at intake, base64 with/without the
   `data:` prefix (raw defaults to JPEG), `photoArrayBuffer` MIME default,
   duplicate short-circuit; Loading notification sent before the intake
-  gate even when saturated.
+  gate even when saturated; intake waits for the database to be ready.
 - `uploader-worker.test.ts` — end-to-end worker pass: upload, hash
   caching, thumbnail-key hygiene (full blob deleted, thumbnail kept),
   badge reset, terminal server errors.
@@ -48,14 +48,15 @@
   success/failure responses; no network without a key.
 - `context-menu.test.ts` — menu construction (root, per-link, separator,
   settings); callback routing (options page, ArrayBuffer upload
-  forwarding, unreachable-tab and render-failure ignores); re-init
-  cleanup without stacking click listeners.
+  forwarding, unreachable-tab and render-failure notifications);
+  re-init cleanup without stacking click listeners.
 - `website.test.ts` — `detectWebsite` hostname mapping: exact hosts and
   subdomains per site, lookalikes fall through to the default.
 - `image-encoder.test.ts` — `fitDimensionSum` scaling/caps; worker
   encoding with bitmap transfer, worker error and timeout paths;
   strict-only behavior (no Worker, no canvas fallback) rejecting
-  without touching the page.
+  without touching the page; missing/unreachable worker file rejected
+  with a rebuild hint before any Worker is spawned.
 - `image-getter.test.ts` — `resolveSelectorTarget` plain and `::`-chained
   shadow-DOM resolution; missing-target error paths; `getImageBase64`
   complete/broken/in-flight/error/tainted-canvas paths; ArrayBuffer
@@ -68,7 +69,13 @@
 - `amo-auth.test.ts` — AMO JWT carries `iss` with a 300s expiry.
 - `notifications.test.ts` — push/update/remove timing (fake timers),
   loading notifications surviving until resolved, runtime message routing.
-- `task-list.test.ts` — cell rendering, stored-blob thumbnails for file
+- `notifications-entry.test.ts` — the content-script wiring passes
+  the full tailwind bundle to the shadow UI (regression guard: without
+  `css:` the template utilities and `@theme` vars go missing).
+- `image-store.test.ts` — real-IndexedDB round trip (fake-indexeddb):
+  intake stores full + thumbnail, duplicates drop the full blob and keep
+  the thumbnail, popup reader resolves thumbs with full-blob fallback,
+  removal/trim delete both keys, missing APIs fall back to the original.
   tasks (mocked store) vs direct remote urls, spinner only for
   queued/processing, remove button for idle tasks, retry button and
   `retryTask` event only for failed tasks.
@@ -78,9 +85,10 @@
 - `subscription-item.test.ts` — delete hits the website-scoped endpoint
   and invalidates the matching query key; post links point at e621 or
   gelbooru based on the website.
-- `uploads-tab.test.ts` — dev-only test-upload button sends a
-  `photoBase64` runtime message; remove/retry events forwarded to the
-  port; failed-only toggle narrows the processed list.
+- `uploads-tab.test.ts` — dev-only test-upload button loads the
+  `test-image.jpg` fixture and sends it as `photoArrayBuffer`; remove/retry
+  events forwarded to the port; failed-only toggle narrows the processed
+  list.
 - `favorites.test.ts` — subscriptions port connects on mount and
   reconnects after a disconnect; unmount disconnects.
 - `setup.ts` — stubs the `browser` WebExtension global (storage, `menus`,

@@ -16,7 +16,7 @@ const emit = defineEmits<{
 
 <template>
     <div v-if="tasks.length > 0" class="task-list">
-        <div v-for="task in tasks" class="task-cell">
+        <div v-for="task in tasks" :key="task.id" class="task-cell">
             <task-thumbnail :task="task" />
             <div class="task-status-container">
                 <spinner v-if="['queued', 'processing'].includes(task.status)" size="30" color="white" class="task-spinner" />

@@ -46,6 +46,7 @@ export class Uploader {
     ports = new Set<Browser.runtime.Port>();
     processingDisplaying = false;
     db?: IDBPDatabase;
+    dbReady: Promise<IDBPDatabase>;
     imageHashes: Record<string, Set<string>> = {};
     contextMenuManager: ContextMenuManager;
     hasherWorker: Worker;
@@ -72,14 +73,25 @@ export class Uploader {
             return false;
         });
 
-        openDB('booru-uploader', 2, {
+        // Opened once and shared: awaiting it (instead of a bare
+        // `this.db` read) closes the race where an upload lands before
+        // the async open completes and its blobs silently vanish.
+        this.dbReady = openDB('booru-uploader', 2, {
             upgrade(db) {
-                db.createObjectStore('images');
+                if (!db.objectStoreNames.contains('images')) {
+                    db.createObjectStore('images');
+                }
             },
         }).then(async (db) => {
-            this.db = db;
             await db.clear('images');
+            return db;
         });
+        this.dbReady.then(
+            (db) => {
+                this.db = db;
+            },
+            (e) => console.error('Failed to open image database:', e),
+        );
 
         this.hasherWorker = new HasherWorker();
         this.hasherWorker.postMessage('init');
@@ -109,6 +121,22 @@ export class Uploader {
             .get('hashes')
             .json();
         this.imageHashes[endpoint] = new Set(response.hashes);
+    }
+
+    /**
+     * Messages can arrive before the async idb open completes (e.g. an
+     * upload right after browser startup). Without this gate the intake
+     * silently skips storing the blob and its thumbnail — the task then
+     * shows up with no thumbnail (or fails outright in the worker).
+     */
+    async ensureDb(): Promise<void> {
+        if (!this.db) {
+            try {
+                this.db = await this.dbReady;
+            } catch (e) {
+                console.error('Failed to open image database:', e);
+            }
+        }
     }
 
     async getHash(endpoint: string, hash: string) {
@@ -145,6 +173,7 @@ export class Uploader {
 
         const releaseGate = await this.uploadGate.acquire();
         try {
+            await this.ensureDb();
             try {
                 await this.getHashes(message.endpoint);
             } catch (e) {

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useMutation } from '@tanstack/vue-query';
 import { computed, ref } from 'vue';
-import { testImage } from '@/entrypoints/popup/testImage';
 import TaskList from '@/entrypoints/popup/uploads-tab/TaskList.vue';
 import { isDev } from '@/utils/env';
 import AppButton from '../../../components/AppButton.vue';
@@ -22,10 +21,20 @@ const visibleProcessed = computed(() =>
 );
 const { mutate: sendTestImage, isPending: isTestImageSending } = useMutation({
     mutationFn: async () => {
+        // Dynamic import guarded by a static DEV check: bundlers drop
+        // this branch (and the test image with it) from production builds.
+        if (!import.meta.env.DEV) {
+            throw new Error(
+                'Test uploads are only available in development builds',
+            );
+        }
+        const { loadTestImage } = await import('@/entrypoints/popup/testImage');
+        const { buffer, mimeType } = await loadTestImage();
         return await browser.runtime.sendMessage({
             type: 'upload',
-            method: 'photoBase64',
-            data: testImage,
+            method: 'photoArrayBuffer',
+            data: buffer,
+            mimeType,
             endpoint: import.meta.env.VITE_TEST_ENDPOINT,
         });
     },

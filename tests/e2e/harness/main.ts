@@ -10,6 +10,8 @@ import './harness.css';
 // The components talk to WebExtension APIs that do not exist on a plain
 // page. Stub the subset they touch so the harness exercises the real
 // components.
+const sentMessages: unknown[][] = [];
+(window as any).__sentMessages = sentMessages;
 (window as any).browser = {
     storage: {
         sync: {
@@ -19,7 +21,10 @@ import './harness.css';
         },
     },
     runtime: {
-        sendMessage: async () => undefined,
+        sendMessage: async (...args: unknown[]) => {
+            sentMessages.push(args);
+            return undefined;
+        },
         onMessage: { addListener: () => {} },
     },
 };
