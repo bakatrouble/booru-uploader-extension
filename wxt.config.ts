@@ -10,7 +10,7 @@ export default defineConfig({
         baseIconPath: 'public/default-icon.svg',
     },
     zip: {
-        excludeSources: ['web-ext-artifacts/**/*', 'lib/imagehash/target/**/*'],
+        excludeSources: ['lib/imagehash/target/**/*'],
     },
     filterEntrypoints: [
         'image-getter',
@@ -49,6 +49,9 @@ export default defineConfig({
         browser_specific_settings: {
             gecko: {
                 id: extensionSlug,
+                data_collection_permissions: {
+                    required: ['none'],
+                }
             },
         },
     },
