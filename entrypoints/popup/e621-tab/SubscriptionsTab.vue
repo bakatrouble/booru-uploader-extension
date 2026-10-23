@@ -110,7 +110,11 @@ watch([filter], () => {
     scrollTo(0);
 });
 
-const { mutate: addSubscription, isPending: addPending } = useMutation({
+const {
+    mutate: addSubscription,
+    isPending: addPending,
+    error: addError,
+} = useMutation({
     mutationFn: () => {
         if (!authToken.value) {
             throw new Error('Not authenticated');
@@ -127,6 +131,9 @@ const { mutate: addSubscription, isPending: addPending } = useMutation({
         queryClient.invalidateQueries({ queryKey: ['subs', website] });
         addModalOpen.value = false;
         newSubscription.value = '';
+    },
+    onError: (err) => {
+        console.error('Add subscription failed:', err);
     },
 });
 </script>
@@ -193,6 +200,9 @@ const { mutate: addSubscription, isPending: addPending } = useMutation({
         >
             <form class="form" @submit.prevent="addSubscription()">
                 <input type="text" v-model="newSubscription" placeholder="Query" />
+                <div v-if="addError" class="error-message">
+                    {{ (addError as Error)?.message ?? addError }}
+                </div>
                 <div class="actions">
                     <app-button type="submit" :loading="addPending">
                         Add

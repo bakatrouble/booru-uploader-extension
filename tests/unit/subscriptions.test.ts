@@ -7,10 +7,8 @@ vi.mock('ky', () => ({
 }));
 
 import ky from 'ky';
-import {
-    resolveApiKey,
-    SubscriptionsFetcher,
-} from '@/entrypoints/background/subscriptionsFetcher';
+import { SubscriptionsFetcher } from '@/entrypoints/background/subscriptionsFetcher';
+import { resolveApiKey } from '@/utils/apiKey';
 import { storageData } from './setup';
 
 const kyResponse = <T>(payload: T) =>
@@ -138,6 +136,50 @@ describe('SubscriptionsFetcher', () => {
         expect(del).toHaveBeenCalledWith('subscriptions?website=gelbooru', {
             json: { subs: ['dog'] },
         });
+    });
+
+    it('keeps old subscriptions when the network fails', async () => {
+        storageData.apiKey = 'secret';
+        const get = vi.fn(async () => {
+            throw new Error('offline');
+        });
+        mockedCreate.mockReturnValue({ get } as never);
+
+        const fetcher = Object.create(
+            SubscriptionsFetcher.prototype,
+        ) as SubscriptionsFetcher;
+        fetcher.subscriptions = { e621: ['cached'] };
+        fetcher.ports = new Set();
+
+        await expect(fetcher.fetchSubscriptions()).resolves.toEqual([]);
+        expect(fetcher.subscriptions).toEqual({ e621: ['cached'] });
+    });
+
+    it('reports addSubscription failures instead of claiming success', async () => {
+        storageData.apiKey = 'secret';
+        const get = vi.fn(() => subscriptionsResponse([]));
+        const post = vi.fn(async () => {
+            throw new Error('forbidden');
+        });
+        mockedCreate.mockReturnValue({ get, post } as never);
+
+        const fetcher = Object.create(
+            SubscriptionsFetcher.prototype,
+        ) as SubscriptionsFetcher;
+        fetcher.subscriptions = {};
+        fetcher.ports = new Set();
+
+        const sendResponse = vi.fn();
+        const handled = fetcher.handleMessage(
+            { type: 'addSubscription', tag: 'cat', website: 'e621' },
+            {} as never,
+            sendResponse,
+        );
+        expect(handled).toBe(true);
+        await vi.waitFor(() =>
+            expect(sendResponse).toHaveBeenCalledWith(false),
+        );
+        expect(get).not.toHaveBeenCalled();
     });
 
     it('returns false for unknown messages', () => {

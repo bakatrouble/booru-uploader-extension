@@ -86,7 +86,7 @@ defineExpose({
                     <spinner v-else-if="notification.level === NotificationLevel.Loading" />
                 </div>
                 <div class="flex flex-col justify-center">
-                    <div v-if="notification.title" class="font-bold mb/2">{{ notification.title }}</div>
+                    <div v-if="notification.title" class="font-bold mb-2">{{ notification.title }}</div>
                     <div>{{ notification.message }}</div>
                 </div>
             </div>

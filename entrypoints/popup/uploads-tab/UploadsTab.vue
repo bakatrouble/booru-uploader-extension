@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { useMutation } from '@tanstack/vue-query';
+import { computed, ref } from 'vue';
 import { testImage } from '@/entrypoints/popup/testImage';
 import TaskList from '@/entrypoints/popup/uploads-tab/TaskList.vue';
+import { isDev } from '@/utils/env';
 import AppButton from '../../../components/AppButton.vue';
 import SectionHeader from '../../../components/SectionHeader.vue';
 import type { UploadTask } from '../../background/uploader';
@@ -12,14 +14,12 @@ const { queued, processed, port } = defineProps<{
     port?: Browser.runtime.Port;
 }>();
 
-const loading = ref(false);
-
-onMounted(() => {
-    setInterval(() => {
-        loading.value = !loading.value;
-    }, 500);
-});
-
+const showFailedOnly = ref(false);
+const visibleProcessed = computed(() =>
+    showFailedOnly.value
+        ? processed.filter((task) => task.status === 'failed')
+        : processed,
+);
 const { mutate: sendTestImage, isPending: isTestImageSending } = useMutation({
     mutationFn: async () => {
         return await browser.runtime.sendMessage({
@@ -39,10 +39,21 @@ const { mutate: sendTestImage, isPending: isTestImageSending } = useMutation({
             :tasks="queued"
             @remove-task="id => port?.postMessage({ type: 'removeTask', id })"
         />
-        <section-header>Processed</section-header>
+        <section-header>
+            Processed
+            <template #action>
+                <app-button
+                    :active="showFailedOnly"
+                    @click="showFailedOnly = !showFailedOnly"
+                >
+                    Failed only
+                </app-button>
+            </template>
+        </section-header>
         <task-list
-            :tasks="processed"
+            :tasks="visibleProcessed"
             @remove-task="id => port?.postMessage({ type: 'removeTask', id })"
+            @retry-task="id => port?.postMessage({ type: 'retryTask', id })"
         />
         <app-button
             v-if="isDev"

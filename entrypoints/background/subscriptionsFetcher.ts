@@ -1,4 +1,5 @@
 import ky from 'ky';
+import { resolveApiKey } from '@/utils/apiKey';
 
 type RuntimeMessage =
     | {
@@ -14,13 +15,6 @@ type RuntimeMessage =
           tag: string;
           website: string;
       };
-
-export const resolveApiKey = (stored: unknown): string | undefined => {
-    if (typeof stored === 'string' && stored) {
-        return stored;
-    }
-    return import.meta.env.VITE_API_KEY || undefined;
-};
 
 export class SubscriptionsFetcher {
     subscriptions: Record<string, string[]> = {};
@@ -67,17 +61,23 @@ export class SubscriptionsFetcher {
             await browser.storage.sync.get('apiKey');
         const apiKey = resolveApiKey(storedApiKey);
         if (!apiKey) return [];
-        const [{ subscriptions: e621 }, { subscriptions: gelbooru }] =
-            await Promise.all([
-                this.client
-                    .get('subscriptions?website=e621')
-                    .json<{ subscriptions: string[] }>(),
-                this.client
-                    .get('subscriptions?website=gelbooru')
-                    .json<{ subscriptions: string[] }>(),
-            ]);
-        this.subscriptions.e621 = e621;
-        this.subscriptions.gelbooru = gelbooru;
+        try {
+            const [{ subscriptions: e621 }, { subscriptions: gelbooru }] =
+                await Promise.all([
+                    this.client
+                        .get('subscriptions?website=e621')
+                        .json<{ subscriptions: string[] }>(),
+                    this.client
+                        .get('subscriptions?website=gelbooru')
+                        .json<{ subscriptions: string[] }>(),
+                ]);
+            this.subscriptions.e621 = e621;
+            this.subscriptions.gelbooru = gelbooru;
+        } catch (e) {
+            // Keep the last known subscriptions instead of clearing them.
+            console.error('Error fetching subscriptions:', e);
+            return [];
+        }
         for (const port of this.ports) {
             port.postMessage({ subscriptions: this.subscriptions });
         }
@@ -109,20 +109,28 @@ export class SubscriptionsFetcher {
                     .post(`subscriptions?website=${msg.website}`, {
                         json: { subs: [msg.tag] },
                     })
-                    .then(() => this.fetchSubscriptions())
-                    .finally(() => {
-                        sendResponse(true);
-                    });
+                    .then(
+                        () => this.fetchSubscriptions().then(() => true),
+                        (e) => {
+                            console.error('Error adding subscription:', e);
+                            return false;
+                        },
+                    )
+                    .then(sendResponse);
                 break;
             case 'removeSubscription':
                 this.client
                     .delete(`subscriptions?website=${msg.website}`, {
                         json: { subs: [msg.tag] },
                     })
-                    .then(() => this.fetchSubscriptions())
-                    .finally(() => {
-                        sendResponse(true);
-                    });
+                    .then(
+                        () => this.fetchSubscriptions().then(() => true),
+                        (e) => {
+                            console.error('Error removing subscription:', e);
+                            return false;
+                        },
+                    )
+                    .then(sendResponse);
                 break;
             default:
                 return false;

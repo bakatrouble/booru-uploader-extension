@@ -10,34 +10,70 @@
 
 - `queue.test.ts` — FIFO `put`/`wait`/`shift` semantics, pending-waiter
   notification, `Wait conflict` on a second concurrent waiter.
+- `mutex.test.ts` — FIFO serialization across same-tick acquirers,
+  idempotent release (pins the race the hand-rolled lock had).
+- `attempt.test.ts` — `withRetries` attempt counting, exhaustion and
+  backoff schedule; `attemptUpload` per-type posts, terminal server
+  errors, retry-then-success with attempt counting, retry cap, missing
+  blob short-circuit.
+- `mutex.test.ts` — FIFO serialization across same-tick acquirers,
+  idempotent release.
+- `attempt.test.ts` — `withRetries` attempt counting, exhaustion and
+  backoff schedule; `attemptUpload` per-type posts, terminal server
+  errors, retry-then-success, retry cap, missing-blob short-circuit.
+- `hasher.test.ts` — buffer transfer + stale-reply filtering, timeout
+  rejection when the worker stays silent.
+- `thumbnails.test.ts` — JPEG downscale dimensions, passthrough when
+  imaging APIs are missing or the image is already small.
+- `photo-intake.test.ts` — base64 with/without prefix, ArrayBuffer MIME
+  handling, single object URL, duplicate short-circuit.
+- `hasher.test.ts` — buffer transfer + stale-reply filtering, timeout
+  rejection when the worker stays silent.
+- `thumbnails.test.ts` — JPEG downscale dimensions, passthrough when
+  imaging APIs are missing or the image is already small.
 - `task-utils.test.ts` — `buildTaskListMessage` shape; `removeTaskFromLists`
-  keeps `processing` tasks, removes queued/processed ones, ignores unknown
-  ids. Mirrors the logic wired into `Uploader.handlePortConnection`.
-- `uploader.test.ts` — `getKyClient` endpoint scoping; `getHashes` caching;
-  `getHash` hit/miss bookkeeping; `handleExternalMessage` routing
+  returns the removed task (any processed status, queued unless
+  processing); `trimProcessed` evicts oldest terminal tasks but never
+  failed ones; `retryFailedTask` requeues failures with reset retries.
+- `uploader.test.ts` — `getKyClient` endpoint scoping (`prefix`); `getHashes`
+  caching; `getHash` hit/miss bookkeeping; `handleExternalMessage` routing
   (upload/getUploadLinks/updateContextMenu); port connect/message/disconnect;
   `computeHash` ignoring stale worker responses (pins the fixed id-matching).
+- `uploader-upload.test.ts` — `handleMessage` photo paths: single object URL
+  per image, base64 with/without the `data:` prefix (raw defaults to JPEG),
+  `photoArrayBuffer` MIME default, duplicate short-circuit.
 - `subscriptions.test.ts` — `resolveApiKey` fallback; `fetchSubscriptions`
-  populating both websites and notifying ports; add/remove subscription
-  flows; no network without a key.
+  populating both websites and notifying ports, keeping cached data on
+  network failure; add/remove subscription flows with honest
+  success/failure responses; no network without a key.
 - `context-menu.test.ts` — menu construction (root, per-link, separator,
   settings); callback routing (options page, base64 upload forwarding,
-  ignores); re-init cleanup.
-- `website.test.ts` — `detectWebsite` hostname mapping (pins the current
-  substring-match behavior, including lookalikes).
+  ignores, unreachable content scripts); re-init cleanup without
+  stacking click listeners.
+- `website.test.ts` — `detectWebsite` hostname mapping: exact hosts and
+  subdomains per site, lookalikes fall through to the default.
 - `image-getter.test.ts` — `resolveSelectorTarget` plain and `::`-chained
-  shadow-DOM resolution; missing-target error paths.
+  shadow-DOM resolution; missing-target error paths; `getImageBase64`
+  complete/broken/in-flight/error/tainted-canvas paths.
 - `upload-links.test.ts` — `moveUploadLink` moves and boundary refusals
-  (the options-page reorder buttons).
+  (the options-page reorder buttons); `isValidEndpointUrl` accepts
+  absolute http(s) URLs and rejects the rest.
 - `use-sync-storage.test.ts` — backward-compatible reads (native values
   stored by older versions), JSON round-trips, defaults.
 - `amo-auth.test.ts` — AMO JWT carries `iss` with a 300s expiry.
 - `notifications.test.ts` — push/update/remove timing (fake timers),
   loading notifications surviving until resolved, runtime message routing.
 - `task-list.test.ts` — cell rendering, thumbnail only for file tasks,
-  spinner only for queued/processing, remove-button visibility + event.
+  spinner only for queued/processing, remove button for idle tasks,
+  retry button and `retryTask` event only for failed tasks.
 - `subscription-item.test.ts` — delete hits the website-scoped endpoint
-  and invalidates the matching query key.
+  and invalidates the matching query key; post links point at e621 or
+  gelbooru based on the website.
+- `uploads-tab.test.ts` — dev-only test-upload button sends a
+  `photoBase64` runtime message; remove/retry events forwarded to the
+  port; failed-only toggle narrows the processed list.
+- `favorites.test.ts` — subscriptions port connects on mount and
+  reconnects after a disconnect; unmount disconnects.
 - `setup.ts` — stubs the `browser` WebExtension global (storage, menus as
   `contextMenus`, tabs, runtime, browserAction), the WXT
   `defineBackground`/`defineContentScript` globals, and resets the DOM
@@ -49,9 +85,10 @@
   `Notifications` components with stubbed ports and icons (works offline).
   `harness.css` points Tailwind's scanner at `entrypoints/` + `components/`
   so the component utilities are generated.
-- `specs/tasks.spec.ts` — task cells render with statuses; remove buttons
-  emit `removeTask` with the task id (captured via a stub port);
-  processing tasks hide the remove button.
+- `specs/tasks.spec.ts` — task cells render with statuses; remove click
+  forwards `removeTask` with the task id (captured via a stub port);
+  processing tasks have no remove button; only failed tasks offer retry
+  (`retryTask`); the failed-only toggle narrows the processed list.
 - `specs/notifications.spec.ts` — a pushed notification renders and
   auto-dismisses; loading notifications persist until resolved.
 

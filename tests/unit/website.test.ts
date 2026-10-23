@@ -8,7 +8,7 @@ describe('detectWebsite', () => {
         expect(detectWebsite('e962.net')).toBe('e621');
     });
 
-    it('resolves gelbooru hosts', () => {
+    it('resolves gelbooru hosts and subdomains', () => {
         expect(detectWebsite('gelbooru.com')).toBe('gelbooru');
         expect(detectWebsite('www.gelbooru.com')).toBe('gelbooru');
     });
@@ -19,9 +19,9 @@ describe('detectWebsite', () => {
         expect(detectWebsite('example.com')).toBe('e621');
     });
 
-    it('matches gelbooru by substring, including lookalikes', () => {
-        // Documents current behavior: substring matching over-matches.
-        // See improvements list for a stricter alternative.
-        expect(detectWebsite('evilgelbooru.com')).toBe('gelbooru');
+    it('does not match lookalike domains', () => {
+        expect(detectWebsite('evilgelbooru.com')).toBe('e621');
+        expect(detectWebsite('gelbooru.com.evil.com')).toBe('e621');
+        expect(detectWebsite('notgelbooru.com')).toBe('e621');
     });
 });

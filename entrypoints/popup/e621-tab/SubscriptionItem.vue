@@ -2,7 +2,7 @@
 import { mdiClose } from '@mdi/js';
 import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import ky from 'ky';
-import { inject, type Ref, ref } from 'vue';
+import { computed, inject, type Ref, ref } from 'vue';
 
 const { query, website } = defineProps<{
     query: string;
@@ -11,6 +11,13 @@ const { query, website } = defineProps<{
 
 const queryClient = useQueryClient();
 const authToken = inject<Ref<string | undefined>>('e621-auth-token', ref());
+
+const postUrl = computed(() => {
+    const tags = encodeURIComponent(query);
+    return website === 'gelbooru'
+        ? `https://gelbooru.com/index.php?page=post&s=list&tags=${tags}`
+        : `https://e621.net/posts?tags=${tags}`;
+});
 
 const client = ky.extend({
     prefix: 'https://e621.bakatrouble.me/api',
@@ -36,12 +43,15 @@ const { mutate: doDelete, isPending: isDeleting } = useMutation({
     onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['subs', website] });
     },
+    onError: (err) => {
+        console.error('Delete subscription failed:', err);
+    },
 });
 </script>
 
 <template>
     <div class="subscription-item">
-        <a :href="`https://e621.net/posts?tags=${encodeURIComponent(query)}`" target="_blank" class="query">{{ query }}</a>
+        <a :href="postUrl" target="_blank" class="query">{{ query }}</a>
         <div style="flex-grow: 1" />
         <button
             @click="() => doDelete()"

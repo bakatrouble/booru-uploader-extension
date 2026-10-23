@@ -9,6 +9,7 @@ const { tasks } = defineProps<{
 
 const emit = defineEmits<{
     removeTask: [id: string];
+    retryTask: [id: string];
 }>();
 </script>
 
@@ -21,6 +22,7 @@ const emit = defineEmits<{
                 <span>{{ task.status }}</span>
             </div>
             <app-button v-if="task.status !== 'processing'" class="remove-btn" icon="close" @click="emit('removeTask', task.id)" />
+            <app-button v-if="task.status === 'failed'" class="retry-btn" icon="refresh" @click="emit('retryTask', task.id)" />
         </div>
     </div>
     <div v-else class="no-tasks-text">
@@ -78,6 +80,19 @@ const emit = defineEmits<{
                 opacity: 1
 
         &:hover .remove-btn
+            opacity: .8
+
+        .retry-btn
+            position: absolute
+            bottom: 4px
+            right: 4px
+            opacity: 0
+            transition: opacity .2s
+
+            &:hover
+                opacity: 1
+
+        &:hover .retry-btn
             opacity: .8
 
 .no-tasks-text

@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { resolveApiKey } from '@/utils/apiKey';
 import OwO from './OwO.vue';
 import SubscriptionsBlock from './SubscriptionsBlock.vue';
 import { useWebsite } from './useWebsite';
+
+const RECONNECT_DELAY_MS = 2000;
 
 const tagElements = ref<[HTMLElement, string][]>([]);
 const loading = ref(true);
@@ -12,10 +16,8 @@ const port = ref<Browser.runtime.Port | null>(null);
 const website = useWebsite();
 
 onMounted(async () => {
-    let { apiKey } = await browser.storage.sync.get('apiKey');
-    if (!apiKey) {
-        apiKey = import.meta.env.VITE_API_KEY;
-    }
+    const { apiKey: storedApiKey } = await browser.storage.sync.get('apiKey');
+    const apiKey = resolveApiKey(storedApiKey);
     if (!apiKey) {
         loading.value = false;
         return;
@@ -59,6 +61,14 @@ onMounted(async () => {
 
     allTags.value = allTagsArray;
 
+    connectSubscriptionsPort();
+});
+
+let reconnectTimer: number | undefined;
+
+const connectSubscriptionsPort = () => {
+    window.clearTimeout(reconnectTimer);
+    port.value?.disconnect();
     port.value = browser.runtime.connect({ name: 'subscriptions' });
     port.value.onMessage.addListener((message: any) => {
         console.log(message.subscriptions, website.value);
@@ -66,6 +76,21 @@ onMounted(async () => {
         console.log(message.subscriptions[website.value] || []);
         loading.value = false;
     });
+    port.value.onDisconnect.addListener(() => {
+        // The background page restarted (or reloaded): reconnect so the
+        // subscription state does not go stale silently.
+        port.value = null;
+        reconnectTimer = window.setTimeout(
+            connectSubscriptionsPort,
+            RECONNECT_DELAY_MS,
+        );
+    });
+};
+
+onUnmounted(() => {
+    window.clearTimeout(reconnectTimer);
+    port.value?.disconnect();
+    port.value = null;
 });
 
 const subscriptionsBlockSelector = computed(() => {

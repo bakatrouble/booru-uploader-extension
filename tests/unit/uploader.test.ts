@@ -28,6 +28,7 @@ vi.mock('idb', () => ({
 import ky from 'ky';
 import type { UploadTask } from '@/entrypoints/background/uploader';
 import { Uploader } from '@/entrypoints/background/uploader';
+import { Queue } from '@/utils/queue';
 
 const mockedExtend = vi.mocked(ky.extend);
 
@@ -134,11 +135,13 @@ describe('Uploader.handleExternalMessage', () => {
 });
 
 describe('Uploader.handlePortConnection', () => {
-    it('publishes the task list, removes tasks, tracks ports', () => {
+    it('publishes the task list, removes tasks, tracks ports', async () => {
         const uploader = Object.create(Uploader.prototype) as Uploader;
         uploader.queuedTasks = { items: [makeTask('q1', 'queued')] } as never;
         uploader.processedTasks = [makeTask('p1', 'complete')];
         uploader.ports = new Set();
+        const dbDelete = vi.fn(async () => {});
+        uploader.db = { delete: dbDelete } as never;
 
         const messageListeners: Array<(msg: unknown) => void> = [];
         const disconnectListeners: Array<() => void> = [];
@@ -167,10 +170,16 @@ describe('Uploader.handlePortConnection', () => {
 
         messageListeners[0]!({ type: 'removeTask', id: 'q1' });
         expect(uploader.queuedTasks.items).toEqual([]);
+        await vi.waitFor(() =>
+            expect(port.postMessage).toHaveBeenCalledTimes(2),
+        );
 
         messageListeners[0]!({ type: 'removeTask', id: 'p1' });
         expect(uploader.processedTasks).toEqual([]);
-        expect(port.postMessage).toHaveBeenCalledTimes(3);
+        expect(dbDelete).toHaveBeenCalledWith('images', 'p1');
+        await vi.waitFor(() =>
+            expect(port.postMessage).toHaveBeenCalledTimes(3),
+        );
 
         disconnectListeners[0]!();
         expect(uploader.ports.has(port as never)).toBe(false);
@@ -197,6 +206,40 @@ describe('Uploader.handlePortConnection', () => {
 
         uploader.handlePortConnection(port as never);
         messageListeners[0]!({ type: 'removeTask', id: 'q1' });
+        expect(uploader.queuedTasks.items).toHaveLength(1);
+    });
+
+    it('retries failed tasks back into the queue', async () => {
+        const uploader = Object.create(Uploader.prototype) as Uploader;
+        uploader.queuedTasks = new Queue<UploadTask>();
+        uploader.processedTasks = [{ ...makeTask('f1', 'failed'), retries: 3 }];
+        uploader.ports = new Set();
+
+        const messageListeners: Array<(msg: unknown) => void> = [];
+        const port = {
+            postMessage: vi.fn(),
+            onMessage: {
+                addListener: vi.fn((l: (msg: unknown) => void) => {
+                    messageListeners.push(l);
+                }),
+            },
+            onDisconnect: { addListener: vi.fn() },
+        };
+
+        uploader.handlePortConnection(port as never);
+        messageListeners[0]!({ type: 'retryTask', id: 'f1' });
+        expect(uploader.processedTasks).toEqual([]);
+        expect(uploader.queuedTasks.items).toHaveLength(1);
+        expect(uploader.queuedTasks.items[0]).toMatchObject({
+            id: 'f1',
+            status: 'queued',
+            retries: 0,
+        });
+        await vi.waitFor(() =>
+            expect(port.postMessage).toHaveBeenCalledTimes(2),
+        );
+
+        messageListeners[0]!({ type: 'retryTask', id: 'missing' });
         expect(uploader.queuedTasks.items).toHaveLength(1);
     });
 });

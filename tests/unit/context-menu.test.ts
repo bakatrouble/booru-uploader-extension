@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContextMenuManager, MenuIds } from '@/utils/context-menu';
-import { getMenusClickListener, storageData, stubBrowser } from './setup';
+import {
+    getMenusClickListener,
+    getMenusClickListenerCount,
+    storageData,
+    stubBrowser,
+} from './setup';
 
 const makeManager = () => {
     const uploader = { handleMessage: vi.fn(async () => ({})) };
@@ -61,6 +66,17 @@ describe('ContextMenuManager.init', () => {
         expect(stubBrowser.contextMenus.remove).toHaveBeenCalledWith(
             MenuIds.Root,
         );
+    });
+
+    it('re-init does not stack click listeners', async () => {
+        const { manager } = makeManager();
+        await flushInit();
+        await manager.init();
+        await manager.init();
+        expect(getMenusClickListenerCount()).toBe(1);
+        expect(
+            stubBrowser.contextMenus.onClicked.removeListener,
+        ).toHaveBeenCalled();
     });
 });
 
@@ -136,6 +152,22 @@ describe('ContextMenuManager.callback', () => {
         await manager.callback(
             {
                 menuItemId: `${MenuIds.Destination}missing`,
+                targetElementId: 5,
+            } as never,
+            { id: 9 } as never,
+        );
+        expect(uploader.handleMessage).not.toHaveBeenCalled();
+    });
+
+    it('ignores tabs without a reachable content script', async () => {
+        const { manager, uploader } = makeManager();
+        await flushInit();
+        stubBrowser.tabs.sendMessage.mockRejectedValueOnce(
+            new Error('No content script'),
+        );
+        await manager.callback(
+            {
+                menuItemId: `${MenuIds.Destination}l1`,
                 targetElementId: 5,
             } as never,
             { id: 9 } as never,

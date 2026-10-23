@@ -228,7 +228,7 @@ class SignCommand extends Command {
         const checkZips = () => existsSync(extensionZip);
         if (!checkZips()) {
             console.log('Zipping extension...');
-            shellJS.exec('npm run zip:firefox');
+            shellJS.exec('pnpm run zip:firefox');
         } else {
             console.log('Already zipped');
         }

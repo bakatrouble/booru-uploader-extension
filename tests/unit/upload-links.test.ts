@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveUploadLink } from '@/utils/uploadLinks';
+import { isValidEndpointUrl, moveUploadLink } from '@/utils/uploadLinks';
 
 describe('moveUploadLink', () => {
     it('moves an item up and down', () => {
@@ -22,5 +22,21 @@ describe('moveUploadLink', () => {
         expect(moveUploadLink(list, -1, 1)).toBe(false);
         expect(moveUploadLink(list, 5, -1)).toBe(false);
         expect(list).toEqual(['a']);
+    });
+});
+
+describe('isValidEndpointUrl', () => {
+    it('accepts absolute http(s) URLs', () => {
+        expect(isValidEndpointUrl('https://example.test/hook')).toBe(true);
+        expect(isValidEndpointUrl('http://localhost:8080/x')).toBe(true);
+        expect(isValidEndpointUrl('  https://example.test/hook  ')).toBe(true);
+    });
+
+    it('rejects empty, relative and non-http(s) values', () => {
+        expect(isValidEndpointUrl('')).toBe(false);
+        expect(isValidEndpointUrl('not a url')).toBe(false);
+        expect(isValidEndpointUrl('/relative/path')).toBe(false);
+        expect(isValidEndpointUrl('ftp://example.test/x')).toBe(false);
+        expect(isValidEndpointUrl('javascript:alert(1)')).toBe(false);
     });
 });

@@ -1,4 +1,3 @@
-import { base64ToBlob } from 'file64';
 import { type IDBPDatabase, openDB } from 'idb';
 import ky from 'ky';
 import { uuidv7 } from 'uuidv7';
@@ -6,59 +5,40 @@ import { ContextMenuManager } from '@/utils/context-menu';
 import { NotificationLevel } from '@/utils/enums';
 import { isDev } from '@/utils/env';
 import HasherWorker from '@/utils/hasherWorker?worker';
+import { Mutex } from '@/utils/mutex';
 import { Queue } from '@/utils/queue';
-import { buildTaskListMessage, removeTaskFromLists } from './taskUtils';
+import {
+    attemptUpload,
+    MAX_UPLOAD_RETRIES,
+    UPLOAD_TIMEOUT_MS,
+    type UploadEndpoint,
+} from './attempt';
+import { computeHashWithWorker } from './hasher';
+import {
+    enqueuePhotoFile,
+    normalizePhotoInput,
+    type PhotoIntakeContext,
+} from './photoIntake';
+import {
+    buildTaskListMessage,
+    removeTaskFromLists,
+    retryFailedTask,
+    trimProcessed,
+} from './taskUtils';
+import { deleteStoredBlob, storeThumbnail } from './thumbnails';
+import type {
+    ExternalMessage,
+    PortMessage,
+    UploadResponse,
+    UploadTask,
+} from './types';
 
-type PortMessage = {
-    type: 'removeTask';
-    id: string;
-};
-
-type ExternalMessage =
-    | {
-          type: 'updateContextMenu' | 'getUploadLinks';
-      }
-    | ({
-          type: 'upload';
-          endpoint: string;
-      } & (
-          | {
-                method: 'photoBase64';
-                data: string;
-            }
-          | {
-                method: 'photoUrl';
-                url: string;
-            }
-          | {
-                method: 'gif';
-                url: string;
-            }
-      ));
-
-export type UploadTask = {
-    id: string;
-    endpoint: string;
-    retries: number;
-    status: 'queued' | 'processing' | 'complete' | 'duplicate' | 'failed';
-} & (
-    | {
-          type: 'photoFile';
-          file?: string;
-      }
-    | {
-          type: 'photoUrl';
-          url: string;
-      }
-    | {
-          type: 'gif';
-          url: string;
-      }
-    | {
-          type: 'video';
-          url: string;
-      }
-);
+export type {
+    ExternalMessage,
+    PortMessage,
+    UploadResponse,
+    UploadTask,
+} from './types';
 
 export class Uploader {
     queuedTasks = new Queue<UploadTask>();
@@ -69,8 +49,7 @@ export class Uploader {
     imageHashes: Record<string, Set<string>> = {};
     contextMenuManager: ContextMenuManager;
     hasherWorker: Worker;
-    lock: Promise<void> | undefined;
-    lockResolve: (() => void) | undefined;
+    uploadLock = new Mutex();
 
     constructor() {
         browser.browserAction.setBadgeBackgroundColor({ color: 'teal' });
@@ -142,8 +121,7 @@ export class Uploader {
     async handleMessage(message: ExternalMessage, tabId?: number) {
         if (message.type !== 'upload') return;
 
-        await this.lock;
-        this.lock = new Promise((resolve) => (this.lockResolve = resolve));
+        const releaseLock = await this.uploadLock.acquire();
         try {
             let notificationId: string | undefined;
 
@@ -167,36 +145,27 @@ export class Uploader {
                 id: uuidv7(),
                 endpoint: message.endpoint,
                 retries: 0,
-                status: 'queued',
+                status: 'queued' as const,
             };
             let result: true | 'duplicate' = true;
+            const intake: PhotoIntakeContext = {
+                db: this.db,
+                imageHashes: this.imageHashes,
+                queuedTasks: this.queuedTasks,
+                processedTasks: this.processedTasks,
+                computeHash: (blob) => this.computeHash(blob),
+                getHash: (endpoint, hash) => this.getHash(endpoint, hash),
+            };
             switch (message.method) {
-                case 'photoBase64': {
-                    const blob = await base64ToBlob(`data:${message.data}`);
-                    const task = {
-                        type: 'photoFile',
-                        ...base,
-                        file: URL.createObjectURL(blob),
-                    } as UploadTask;
-                    await this.db?.put('images', blob, base.id);
-                    const knownHashes = this.imageHashes[message.endpoint];
-                    if (knownHashes) {
-                        const hash = await this.computeHash(blob);
-                        const conflict = knownHashes.has(hash.toString());
-                        if (
-                            conflict &&
-                            (await this.getHash(message.endpoint, hash))
-                        ) {
-                            task.status = result = 'duplicate';
-                            this.processedTasks.unshift(task);
-                            break;
-                        }
-                    }
-                    this.queuedTasks.put({
-                        type: 'photoFile',
-                        ...base,
-                        file: URL.createObjectURL(blob),
-                    } as UploadTask);
+                case 'photoBase64':
+                case 'photoArrayBuffer': {
+                    const blob = await normalizePhotoInput(message);
+                    result = await enqueuePhotoFile(
+                        intake,
+                        base,
+                        blob,
+                        message.endpoint,
+                    );
                     break;
                 }
                 case 'photoUrl':
@@ -213,13 +182,6 @@ export class Uploader {
                         url: message.url,
                     } as UploadTask);
                     break;
-                // case 'video':
-                //     this.queuedTasks.put({
-                //         type: 'video',
-                //         ...base,
-                //         url: message.url,
-                //     } as UploadTask);
-                //     break;
             }
             if (tabId && notificationId) {
                 if (result === 'duplicate') {
@@ -245,7 +207,7 @@ export class Uploader {
             this.sendUpdateToPorts();
             return {};
         } finally {
-            this.lockResolve?.();
+            releaseLock();
         }
     }
 
@@ -271,14 +233,26 @@ export class Uploader {
             buildTaskListMessage(this.queuedTasks.items, this.processedTasks),
         );
 
-        port.onMessage.addListener((response) => {
+        port.onMessage.addListener(async (response) => {
             const msg = response as PortMessage;
 
             switch (msg.type) {
                 case 'removeTask': {
-                    removeTaskFromLists(
+                    const removed = removeTaskFromLists(
                         this.queuedTasks.items,
                         this.processedTasks,
+                        msg.id,
+                    );
+                    if (removed) {
+                        await deleteStoredBlob(this.db, removed.id);
+                    }
+                    this.sendUpdateToPorts();
+                    break;
+                }
+                case 'retryTask': {
+                    retryFailedTask(
+                        this.processedTasks,
+                        (task) => this.queuedTasks.put(task),
                         msg.id,
                     );
                     this.sendUpdateToPorts();
@@ -299,21 +273,29 @@ export class Uploader {
     }
 
     async computeHash(image: Blob): Promise<string> {
-        const buffer = new Uint8Array(await image.arrayBuffer());
-        const result = await new Promise<string>((resolve) => {
-            const id = uuidv7();
-            const listener = (
-                e: MessageEvent<{ id: string; hash: string }>,
-            ) => {
-                if (e.data.id !== id) return;
-                resolve(e.data.hash);
-                this.hasherWorker.removeEventListener('message', listener);
-            };
-            this.hasherWorker.addEventListener('message', listener);
-            this.hasherWorker.postMessage({ id, buffer });
-        });
+        const result = await computeHashWithWorker(this.hasherWorker, image);
         console.log('hash computed', result);
         return result;
+    }
+
+    private makeUploadEndpoint(endpoint: string): UploadEndpoint {
+        const client = this.getKyClient(endpoint);
+        const post = (
+            path: string,
+            options: { body?: FormData; json?: unknown },
+        ): Promise<UploadResponse> =>
+            client
+                .post(path, {
+                    ...options,
+                    throwHttpErrors: false,
+                    timeout: UPLOAD_TIMEOUT_MS,
+                })
+                .json<UploadResponse>();
+        return {
+            postPhoto: (body) => post('photo', { body }),
+            postPhotoUrl: (url) => post('photo', { json: { url } }),
+            postGif: (url) => post('gif', { json: { url } }),
+        };
     }
 
     async worker() {
@@ -334,78 +316,28 @@ export class Uploader {
             });
 
             try {
-                let response:
-                    | {
-                          status: 'ok';
-                          hash?: string;
-                          upload_id: string;
-                      }
-                    | {
-                          status: 'duplicate';
-                          hash: string;
-                      }
-                    | {
-                          status: 'error';
-                          message: string;
-                      };
-                const ky = this.getKyClient(task.endpoint);
-                switch (task.type) {
-                    case 'photoFile': {
-                        const blob = await this.db?.get('images', task.id);
-                        const body = new FormData();
-                        body.append('upload', blob, `image-${task.id}.jpg`);
-                        response = await ky
-                            .post('photo', {
-                                body,
-                                throwHttpErrors: false,
-                            })
-                            .json();
-                        break;
-                    }
-                    case 'photoUrl': {
-                        response = await ky
-                            .post('photo', {
-                                json: {
-                                    url: task.url,
-                                },
-                                throwHttpErrors: false,
-                            })
-                            .json();
-                        break;
-                    }
-                    case 'gif': {
-                        response = await ky
-                            .post('gif', {
-                                json: {
-                                    url: task.url,
-                                },
-                                throwHttpErrors: false,
-                            })
-                            .json();
-                        break;
-                    }
-                    case 'video': {
-                        response = await ky
-                            .post('video', {
-                                json: {
-                                    url: task.url,
-                                },
-                                throwHttpErrors: false,
-                            })
-                            .json();
-                        break;
-                    }
-                }
-                if (response.status === 'duplicate') {
-                    this.imageHashes[task.endpoint]?.add(response.hash);
+                const { outcome, hash, retries } = await attemptUpload(
+                    task,
+                    this.makeUploadEndpoint(task.endpoint),
+                    async () => (await this.db?.get('images', task.id)) ?? null,
+                    { maxRetries: MAX_UPLOAD_RETRIES },
+                );
+                task.retries = retries;
+                if (outcome === 'duplicate') {
+                    if (hash) this.imageHashes[task.endpoint]?.add(hash);
                     task.status = 'duplicate';
-                } else if (response.status === 'ok') {
-                    if (response.hash) {
-                        this.imageHashes[task.endpoint]?.add(response.hash);
-                    }
+                } else if (outcome === 'complete') {
+                    if (hash) this.imageHashes[task.endpoint]?.add(hash);
                     task.status = 'complete';
                 } else {
                     task.status = 'failed';
+                }
+                if (
+                    (task.status === 'complete' ||
+                        task.status === 'duplicate') &&
+                    task.type === 'photoFile'
+                ) {
+                    await storeThumbnail(this.db, task.id);
                 }
             } catch (e) {
                 console.error('Error processing task:', e);
@@ -413,6 +345,9 @@ export class Uploader {
             } finally {
                 this.queuedTasks.shift();
                 this.processedTasks.unshift(task);
+                for (const evicted of trimProcessed(this.processedTasks)) {
+                    await deleteStoredBlob(this.db, evicted.id);
+                }
                 if (this.queuedTasks.items.length === 0) {
                     this.processingDisplaying = false;
                     await browser.browserAction.setIcon({

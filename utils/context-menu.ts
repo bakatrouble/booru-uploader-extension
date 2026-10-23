@@ -12,6 +12,11 @@ export class ContextMenuManager {
     uploadLinks: UploadLink[] = [];
     initialized = false;
 
+    private clickListener = (
+        info: Browser.contextMenus.OnClickData,
+        tab?: Browser.tabs.Tab,
+    ) => this.callback(info, tab);
+
     constructor(private uploader: Uploader) {
         // noinspection JSIgnoredPromiseFromCall
         this.init();
@@ -62,9 +67,10 @@ export class ContextMenuManager {
             title: 'Settings',
         });
 
-        browser.contextMenus.onClicked.addListener((info, tab) =>
-            this.callback(info, tab),
-        );
+        // Re-registering without removing first would stack duplicate
+        // click handlers (one per updateContextMenu call).
+        browser.contextMenus.onClicked.removeListener(this.clickListener);
+        browser.contextMenus.onClicked.addListener(this.clickListener);
 
         this.initialized = true;
     }
@@ -87,10 +93,22 @@ export class ContextMenuManager {
                 )?.url;
 
                 if (url) {
-                    const dataUrl = await browser.tabs.sendMessage(tab.id, {
-                        type: 'getImageMenusBase64',
-                        targetElementId: info.targetElementId,
-                    });
+                    let dataUrl: string;
+                    try {
+                        dataUrl = await browser.tabs.sendMessage(tab.id, {
+                            type: 'getImageMenusBase64',
+                            targetElementId: info.targetElementId,
+                        });
+                    } catch (e) {
+                        // No content script in the tab (chrome:// pages,
+                        // PDFs, …): nothing to upload.
+                        console.error(
+                            '[context menu] cannot reach tab',
+                            tab.id,
+                            e,
+                        );
+                        return;
+                    }
                     console.log(
                         '[context menu background script] dataUrl:',
                         dataUrl,

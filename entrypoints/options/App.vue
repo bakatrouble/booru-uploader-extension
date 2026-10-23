@@ -8,7 +8,7 @@ import {
 } from '@mdi/js';
 import { useStorageAsync } from '@vueuse/core';
 import { uuidv4 } from 'uuidv7';
-import { moveUploadLink } from '@/utils/uploadLinks';
+import { isValidEndpointUrl, moveUploadLink } from '@/utils/uploadLinks';
 import { browserSyncStorage } from '@/utils/useSyncStorage';
 import HotkeyButton from './HotkeyButton.vue';
 
@@ -58,7 +58,14 @@ const save = async () => {
                         <input
                             type="text"
                             v-model="item.url"
+                            :class="{ invalid: item.url && !isValidEndpointUrl(item.url) }"
                         />
+                        <div
+                            v-if="item.url && !isValidEndpointUrl(item.url)"
+                            class="url-error"
+                        >
+                            Must be an absolute http(s) URL
+                        </div>
                     </div>
                     <div>
                         <hotkey-button v-model="item.hotkey" />
@@ -105,6 +112,19 @@ const save = async () => {
             rounded-sm
             border-gray-700
             border-1;
+
+        &.invalid {
+            @apply
+                border-red-500
+                border-2;
+        }
+    }
+
+    .url-error {
+        @apply
+            text-red-400
+            text-sm
+            mt-1;
     }
 
     button {

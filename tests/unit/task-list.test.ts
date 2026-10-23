@@ -63,15 +63,31 @@ describe('TaskList', () => {
         }
     });
 
-    it('hides the remove button while processing and emits removeTask', async () => {
+    it('offers remove for idle tasks and retry only for failed ones', async () => {
         const processing = mountList([makeTask('a', 'photoUrl', 'processing')]);
         expect(processing.find('.remove-btn').exists()).toBe(false);
+        expect(processing.find('.retry-btn').exists()).toBe(false);
         processing.unmount();
 
         const queued = mountList([makeTask('a', 'photoUrl', 'queued')]);
+        expect(queued.find('.remove-btn').exists()).toBe(true);
+        expect(queued.find('.retry-btn').exists()).toBe(false);
         await queued.find('.remove-btn').trigger('click');
         expect(queued.emitted('removeTask')).toEqual([['a']]);
         queued.unmount();
+
+        for (const status of ['complete', 'duplicate'] as const) {
+            const done = mountList([makeTask('a', 'photoUrl', status)]);
+            expect(done.find('.remove-btn').exists()).toBe(true);
+            expect(done.find('.retry-btn').exists()).toBe(false);
+            done.unmount();
+        }
+
+        const failed = mountList([makeTask('a', 'photoUrl', 'failed')]);
+        expect(failed.find('.remove-btn').exists()).toBe(true);
+        await failed.find('.retry-btn').trigger('click');
+        expect(failed.emitted('retryTask')).toEqual([['a']]);
+        failed.unmount();
     });
 
     it('shows an empty placeholder without tasks', () => {

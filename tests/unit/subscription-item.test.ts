@@ -45,5 +45,16 @@ describe('SubscriptionItem', () => {
             }),
         );
         wrapper.unmount();
+
+        const gelbooru = mount(SubscriptionItem, {
+            props: { query: 'cat dog', website: 'gelbooru' },
+            global: {
+                plugins: [[VueQueryPlugin, { queryClient }]],
+            },
+        });
+        expect(gelbooru.find('.query').attributes('href')).toBe(
+            'https://gelbooru.com/index.php?page=post&s=list&tags=cat%20dog',
+        );
+        gelbooru.unmount();
     });
 });

@@ -6,7 +6,7 @@ import { beforeEach, vi } from 'vitest';
 const storageData: Record<string, unknown> = {};
 
 const menusCreated: any[] = [];
-let menusClickListener: ((...args: any[]) => unknown) | undefined;
+const menusClickListeners: Array<(...args: any[]) => unknown> = [];
 
 const stubBrowser = {
     storage: {
@@ -36,7 +36,11 @@ const stubBrowser = {
         getTargetElement: vi.fn(() => null),
         onClicked: {
             addListener: vi.fn((listener: (...args: any[]) => unknown) => {
-                menusClickListener = listener;
+                menusClickListeners.push(listener);
+            }),
+            removeListener: vi.fn((listener: (...args: any[]) => unknown) => {
+                const index = menusClickListeners.indexOf(listener);
+                if (index !== -1) menusClickListeners.splice(index, 1);
             }),
         },
     },
@@ -84,11 +88,14 @@ beforeEach(() => {
     vi.clearAllMocks();
     for (const k of Object.keys(storageData)) delete storageData[k];
     menusCreated.length = 0;
-    menusClickListener = undefined;
+    menusClickListeners.length = 0;
     document.body.innerHTML = '';
     document.head.innerHTML = '';
 });
 
 export { menusCreated, storageData, stubBrowser };
 
-export const getMenusClickListener = () => menusClickListener;
+export const getMenusClickListener = () =>
+    menusClickListeners[menusClickListeners.length - 1];
+
+export const getMenusClickListenerCount = () => menusClickListeners.length;
