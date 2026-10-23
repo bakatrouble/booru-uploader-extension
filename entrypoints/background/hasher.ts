@@ -7,9 +7,10 @@ export type HashWorker = Pick<
 
 /**
  * Computes the perceptual hash of an image via the hasher worker.
- * The image buffer is transferred (not copied) to the worker. If the
- * worker does not answer in time, rejects instead of hanging forever —
- * callers must treat this as "unknown, skip dedup".
+ * The image bytes are transferred as a Uint8Array view (not copied)
+ * to the worker — the wasm glue requires a view and silently hashes
+ * an empty slice for a bare ArrayBuffer. If the worker does not answer
+ * in time, rejects instead of hanging forever.
  */
 export const computeHashWithWorker = (
     worker: HashWorker,
@@ -33,6 +34,12 @@ export const computeHashWithWorker = (
                     worker.removeEventListener('message', listener);
                 };
                 worker.addEventListener('message', listener);
-                worker.postMessage({ id, buffer }, [buffer]);
+                // The wasm glue requires a Uint8Array view — a bare
+                // ArrayBuffer silently becomes an empty slice and Rust
+                // rejects it as an unknown format. Transfer the view's
+                // buffer so the worker still receives the bytes by move,
+                // and the received view stays usable.
+                const bytes = new Uint8Array(buffer);
+                worker.postMessage({ id, buffer: bytes }, [bytes.buffer]);
             }),
     );

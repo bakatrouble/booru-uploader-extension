@@ -27,7 +27,7 @@ const stubBrowser = {
             }),
         },
     },
-    contextMenus: {
+    menus: {
         create: vi.fn((options: any) => {
             menusCreated.push(options);
             return options.id ?? options.title;
@@ -89,8 +89,11 @@ beforeEach(() => {
     for (const k of Object.keys(storageData)) delete storageData[k];
     menusCreated.length = 0;
     menusClickListeners.length = 0;
-    document.body.innerHTML = '';
-    document.head.innerHTML = '';
+    // Node-environment tests (e.g. the real wasm round-trip) have no DOM.
+    if (typeof document !== 'undefined') {
+        document.body.innerHTML = '';
+        document.head.innerHTML = '';
+    }
 });
 
 export { menusCreated, storageData, stubBrowser };

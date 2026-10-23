@@ -14,9 +14,7 @@ const makeManager = () => {
 };
 
 const flushInit = () =>
-    vi.waitFor(() =>
-        expect(stubBrowser.contextMenus.create).toHaveBeenCalled(),
-    );
+    vi.waitFor(() => expect(stubBrowser.menus.create).toHaveBeenCalled());
 
 describe('ContextMenuManager.init', () => {
     beforeEach(() => {
@@ -31,7 +29,7 @@ describe('ContextMenuManager.init', () => {
         await flushInit();
         await manager.init();
 
-        const created = stubBrowser.contextMenus.create.mock.calls.map(
+        const created = stubBrowser.menus.create.mock.calls.map(
             (call) => call[0],
         );
         expect(created).toContainEqual(
@@ -63,9 +61,7 @@ describe('ContextMenuManager.init', () => {
         const { manager } = makeManager();
         await flushInit();
         await manager.init();
-        expect(stubBrowser.contextMenus.remove).toHaveBeenCalledWith(
-            MenuIds.Root,
-        );
+        expect(stubBrowser.menus.remove).toHaveBeenCalledWith(MenuIds.Root);
     });
 
     it('re-init does not stack click listeners', async () => {
@@ -74,9 +70,7 @@ describe('ContextMenuManager.init', () => {
         await manager.init();
         await manager.init();
         expect(getMenusClickListenerCount()).toBe(1);
-        expect(
-            stubBrowser.contextMenus.onClicked.removeListener,
-        ).toHaveBeenCalled();
+        expect(stubBrowser.menus.onClicked.removeListener).toHaveBeenCalled();
     });
 });
 

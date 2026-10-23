@@ -51,7 +51,7 @@ export default defineConfig({
                 id: extensionSlug,
                 data_collection_permissions: {
                     required: ['none'],
-                }
+                },
             },
         },
     },

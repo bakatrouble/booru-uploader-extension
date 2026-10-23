@@ -6,16 +6,40 @@ declare module 'wxt/browser' {
     }
 
     namespace Browser {
-        namespace contextMenus {
-            // Firefox-only API, missing from the Chromium-derived base
-            // types. Firefox exposes `contextMenus` as an alias of `menus`.
+        // Firefox's `menus` API. Missing from the Chromium-derived base
+        // types, which only know `contextMenus` — but `contextMenus` is
+        // undefined in Firefox runtimes, so the extension must use
+        // `browser.menus` here.
+        namespace menus {
+            interface CreateProperties {
+                id?: string;
+                parentId?: string;
+                contexts?: string[];
+                title?: string;
+                type?: 'normal' | 'separator' | 'checkbox' | 'radio';
+            }
+
+            interface OnClickData {
+                menuItemId: string | number;
+                parentMenuItemId?: string | number;
+                targetElementId?: number;
+            }
+
+            function create(
+                createProperties: CreateProperties,
+            ): Promise<string | number>;
+            function remove(menuItemId: string): Promise<void>;
             function getTargetElement(
                 targetElementId: number,
             ): Element | undefined;
 
-            interface OnClickData {
-                // Firefox-only: set when the click has a target element.
-                targetElementId?: number;
+            namespace onClicked {
+                function addListener(
+                    callback: (info: OnClickData, tab: tabs.Tab) => void,
+                ): void;
+                function removeListener(
+                    callback: (info: OnClickData, tab: tabs.Tab) => void,
+                ): void;
             }
         }
     }

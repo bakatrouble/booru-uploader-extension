@@ -65,7 +65,7 @@ describe('resolveSelectorTarget', () => {
 describe('ArrayBuffer message handlers', () => {
     it('menus and selector handlers throw when the target is missing', async () => {
         mountDom();
-        stubBrowser.contextMenus.getTargetElement.mockReturnValueOnce(null);
+        stubBrowser.menus.getTargetElement.mockReturnValueOnce(null);
         await expect(messageHandlerMenusBuffer(123)).rejects.toThrow(
             'No target element found',
         );
@@ -82,7 +82,7 @@ describe('ArrayBuffer message handlers', () => {
             'toDataURL',
         ).mockImplementation(toDataURL as never);
         const img = document.createElement('img');
-        stubBrowser.contextMenus.getTargetElement.mockReturnValueOnce(img);
+        stubBrowser.menus.getTargetElement.mockReturnValueOnce(img);
 
         await expect(messageHandlerMenusBuffer(123)).rejects.toThrow(
             'worker encoding unsupported',
@@ -95,7 +95,7 @@ describe('ArrayBuffer message handlers', () => {
         stubWorkerEnv();
         try {
             const img = document.createElement('img');
-            stubBrowser.contextMenus.getTargetElement.mockReturnValueOnce(img);
+            stubBrowser.menus.getTargetElement.mockReturnValueOnce(img);
 
             const pending = messageHandlerMenusBuffer(123);
             await vi.waitFor(() =>

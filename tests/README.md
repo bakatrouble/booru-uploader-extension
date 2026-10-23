@@ -18,6 +18,9 @@
   blob short-circuit.
 - `hasher.test.ts` — buffer transfer + stale-reply filtering, timeout
   rejection when the worker stays silent.
+- `imagehash-wasm.test.ts` — real round-trip through the compiled wasm
+  glue (node env): views hash deterministically, bare ArrayBuffers
+  throw instead of hashing empty bytes.
 - `thumbnails.test.ts` — JPEG downscale dimensions, passthrough when
   imaging APIs are missing or the image is already small.
 - `photo-intake.test.ts` — base64 with/without prefix, ArrayBuffer MIME
@@ -80,8 +83,8 @@
   port; failed-only toggle narrows the processed list.
 - `favorites.test.ts` — subscriptions port connects on mount and
   reconnects after a disconnect; unmount disconnects.
-- `setup.ts` — stubs the `browser` WebExtension global (storage, menus as
-  `contextMenus`, tabs, runtime, browserAction), the WXT
+- `setup.ts` — stubs the `browser` WebExtension global (storage, `menus`,
+  tabs, runtime, browserAction), the WXT
   `defineBackground`/`defineContentScript` globals, and resets the DOM
   between tests.
 

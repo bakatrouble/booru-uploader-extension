@@ -13,7 +13,7 @@ export class ContextMenuManager {
     initialized = false;
 
     private clickListener = (
-        info: Browser.contextMenus.OnClickData,
+        info: Browser.menus.OnClickData,
         tab?: Browser.tabs.Tab,
     ) => this.callback(info, tab);
 
@@ -25,7 +25,7 @@ export class ContextMenuManager {
     async init() {
         if (this.initialized) {
             try {
-                await browser.contextMenus.remove(MenuIds.Root);
+                await browser.menus.remove(MenuIds.Root);
             } catch (e) {
                 console.warn(e);
             }
@@ -38,14 +38,14 @@ export class ContextMenuManager {
                 }
             ).uploadLinks || [];
 
-        browser.contextMenus.create({
+        browser.menus.create({
             id: MenuIds.Root,
             contexts: ['image'],
             title: 'Send to Telegram',
         });
 
         this.uploadLinks.forEach((uploadLink: UploadLink) => {
-            browser.contextMenus.create({
+            browser.menus.create({
                 id: MenuIds.Destination + uploadLink.id,
                 parentId: MenuIds.Root,
                 contexts: ['image'],
@@ -53,14 +53,14 @@ export class ContextMenuManager {
             });
         });
 
-        browser.contextMenus.create({
+        browser.menus.create({
             id: MenuIds.Separator,
             type: 'separator',
             contexts: ['image'],
             parentId: MenuIds.Root,
         });
 
-        browser.contextMenus.create({
+        browser.menus.create({
             id: MenuIds.Settings,
             parentId: MenuIds.Root,
             contexts: ['image'],
@@ -69,16 +69,13 @@ export class ContextMenuManager {
 
         // Re-registering without removing first would stack duplicate
         // click handlers (one per updateContextMenu call).
-        browser.contextMenus.onClicked.removeListener(this.clickListener);
-        browser.contextMenus.onClicked.addListener(this.clickListener);
+        browser.menus.onClicked.removeListener(this.clickListener);
+        browser.menus.onClicked.addListener(this.clickListener);
 
         this.initialized = true;
     }
 
-    async callback(
-        info: Browser.contextMenus.OnClickData,
-        tab?: Browser.tabs.Tab,
-    ) {
+    async callback(info: Browser.menus.OnClickData, tab?: Browser.tabs.Tab) {
         if (info.targetElementId && tab?.id) {
             const menuItemId = info.menuItemId as unknown as string;
             if (!menuItemId?.startsWith(MenuIds.Prefix)) return;

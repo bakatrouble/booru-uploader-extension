@@ -19,7 +19,7 @@ const makeWorker = () => {
 };
 
 describe('computeHashWithWorker', () => {
-    it('transfers the buffer and resolves on the matching reply', async () => {
+    it('transfers a Uint8Array view so the wasm glue sees the bytes', async () => {
         const worker = makeWorker();
         const pending = computeHashWithWorker(
             worker as never,
@@ -30,10 +30,13 @@ describe('computeHashWithWorker', () => {
             expect(worker.postMessage).toHaveBeenCalledTimes(1),
         );
         const [message, transfer] = worker.postMessage.mock.calls[0]!;
-        expect((message as { buffer: unknown }).buffer).toBeInstanceOf(
-            ArrayBuffer,
-        );
-        expect(transfer).toEqual([(message as { buffer: ArrayBuffer }).buffer]);
+        const sent = (message as { buffer: unknown }).buffer;
+        // The wasm binding reads `arg.length`; a bare ArrayBuffer would
+        // silently become an empty slice and Rust would reject it as an
+        // unknown format.
+        expect(sent).toBeInstanceOf(Uint8Array);
+        expect((sent as Uint8Array).byteLength).toBeGreaterThan(0);
+        expect(transfer).toEqual([(sent as Uint8Array).buffer]);
 
         // Stale replies for other ids are ignored.
         worker.listeners[0]!({ data: { id: 'stale', hash: 'nope' } });

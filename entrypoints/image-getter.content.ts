@@ -38,7 +38,7 @@ export const resolveSelectorTarget = (
 export const messageHandlerMenusBuffer = async (
     targetElementId: number,
 ): Promise<ArrayBuffer> => {
-    const el = browser.contextMenus.getTargetElement(
+    const el = browser.menus.getTargetElement(
         targetElementId,
     ) as HTMLImageElement;
     if (!el) {
