@@ -28,3 +28,7 @@ web-ext.config.ts
 /.env
 
 test-results/
+
+# Built JPEG encoder worker (see pnpm build:worker); the TS source in
+# workers/ is the source of truth.
+public/encode-worker.js

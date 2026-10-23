@@ -93,31 +93,32 @@ export class ContextMenuManager {
                 )?.url;
 
                 if (url) {
-                    let dataUrl: string;
+                    let buffer: ArrayBuffer;
                     try {
-                        dataUrl = await browser.tabs.sendMessage(tab.id, {
-                            type: 'getImageMenusBase64',
+                        buffer = await browser.tabs.sendMessage(tab.id, {
+                            type: 'getImageMenusArrayBuffer',
                             targetElementId: info.targetElementId,
                         });
                     } catch (e) {
                         // No content script in the tab (chrome:// pages,
-                        // PDFs, …): nothing to upload.
+                        // PDFs, …) or the render failed: nothing to upload.
                         console.error(
-                            '[context menu] cannot reach tab',
+                            '[context menu] cannot get image bytes from tab',
                             tab.id,
                             e,
                         );
                         return;
                     }
                     console.log(
-                        '[context menu background script] dataUrl:',
-                        dataUrl,
+                        '[context menu background script] bytes:',
+                        buffer?.byteLength,
                     );
                     await this.uploader.handleMessage(
                         {
                             type: 'upload',
-                            method: 'photoBase64',
-                            data: dataUrl,
+                            method: 'photoArrayBuffer',
+                            data: buffer,
+                            mimeType: 'image/jpeg',
                             endpoint: url,
                         },
                         tab.id,

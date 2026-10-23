@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('ky', () => ({
     default: {
@@ -28,8 +28,9 @@ vi.mock('idb', () => ({
 import ky from 'ky';
 import type { UploadTask } from '@/entrypoints/background/uploader';
 import { Uploader } from '@/entrypoints/background/uploader';
-import { Mutex } from '@/utils/mutex';
 import { Queue } from '@/utils/queue';
+import { Semaphore } from '@/utils/semaphore';
+import { stubBrowser } from './setup';
 
 const mockedExtend = vi.mocked(ky.extend);
 
@@ -48,7 +49,7 @@ const makeUploader = () => {
     uploader.processedTasks = [];
     uploader.ports = new Set();
     uploader.imageHashes = {};
-    uploader.uploadLock = new Mutex();
+    uploader.uploadGate = new Semaphore(3);
     (uploader as unknown as { hasherWorker: unknown }).hasherWorker = {
         postMessage: vi.fn(),
         addEventListener: vi.fn(),
@@ -60,8 +61,7 @@ const makeUploader = () => {
 describe('Uploader.handleMessage photo uploads', () => {
     let uploader: Uploader;
     let dbPut: ReturnType<typeof vi.fn>;
-    let createObjectURL: ReturnType<typeof vi.fn>;
-    let realCreateObjectURL: typeof URL.createObjectURL | undefined;
+    let dbDelete: ReturnType<typeof vi.fn>;
 
     const respondHash = (hash: string) => {
         const worker = uploader.hasherWorker as unknown as {
@@ -95,21 +95,18 @@ describe('Uploader.handleMessage photo uploads', () => {
             },
         } as never);
         dbPut = vi.fn(async () => {});
+        dbDelete = vi.fn(async () => {});
         (uploader as unknown as { db: unknown }).db = {
             put: dbPut,
-            get: vi.fn(async () => null),
+            get: vi.fn(async (_store: string, key: string) =>
+                key.endsWith(':thumb') ? null : new Blob(['full']),
+            ),
+            delete: dbDelete,
         };
         respondHash('deadbeef');
-        realCreateObjectURL = URL.createObjectURL;
-        createObjectURL = vi.fn(() => 'blob:fake-url');
-        URL.createObjectURL = createObjectURL as never;
     });
 
-    afterEach(() => {
-        URL.createObjectURL = realCreateObjectURL as never;
-    });
-
-    it('queues a base64 photo with a single object URL', async () => {
+    it('stores the full blob plus a thumbnail at intake', async () => {
         await uploader.handleMessage(
             {
                 type: 'upload',
@@ -120,15 +117,17 @@ describe('Uploader.handleMessage photo uploads', () => {
             undefined,
         );
 
-        expect(createObjectURL).toHaveBeenCalledTimes(1);
         expect(uploader.queuedTasks.items).toHaveLength(1);
         const task = uploader.queuedTasks.items[0]!;
         expect(task.type).toBe('photoFile');
-        expect((task as { file: string }).file).toBe('blob:fake-url');
-        expect(dbPut).toHaveBeenCalledTimes(1);
-        const [, storedBlob, storedId] = dbPut.mock.calls[0]!;
-        expect(storedBlob).toBeInstanceOf(Blob);
-        expect(storedId).toBe(task.id);
+        expect(task).not.toHaveProperty('file');
+        expect(dbPut).toHaveBeenCalledTimes(2);
+        const [, fullBlob, fullKey] = dbPut.mock.calls[0]!;
+        const [, thumbBlob, thumbKey] = dbPut.mock.calls[1]!;
+        expect(fullBlob).toBeInstanceOf(Blob);
+        expect(fullKey).toBe(task.id);
+        expect(thumbBlob).toBeInstanceOf(Blob);
+        expect(thumbKey).toBe(`${task.id}:thumb`);
         expect(uploader.processedTasks).toEqual([]);
     });
 
@@ -143,7 +142,6 @@ describe('Uploader.handleMessage photo uploads', () => {
             undefined,
         );
 
-        expect(createObjectURL).toHaveBeenCalledTimes(1);
         expect(uploader.queuedTasks.items).toHaveLength(1);
         const [, storedBlob] = dbPut.mock.calls[0]!;
         expect((storedBlob as Blob).type).toBe('image/jpeg');
@@ -162,11 +160,9 @@ describe('Uploader.handleMessage photo uploads', () => {
             undefined,
         );
 
-        expect(createObjectURL).toHaveBeenCalledTimes(1);
         expect(uploader.queuedTasks.items).toHaveLength(1);
         const task = uploader.queuedTasks.items[0]!;
         expect(task.type).toBe('photoFile');
-        expect((task as { file: string }).file).toBe('blob:fake-url');
         const [, storedBlob] = dbPut.mock.calls[0]!;
         expect((storedBlob as Blob).type).toBe('image/png');
     });
@@ -185,6 +181,34 @@ describe('Uploader.handleMessage photo uploads', () => {
 
         const [, storedBlob] = dbPut.mock.calls[0]!;
         expect((storedBlob as Blob).type).toBe('image/jpeg');
+    });
+
+    it('notifies immediately even when intake is gated', async () => {
+        uploader.uploadGate = new Semaphore(1);
+        const release = await uploader.uploadGate.acquire();
+
+        const pending = uploader.handleMessage(
+            {
+                type: 'upload',
+                endpoint: 'https://example.test',
+                method: 'photoUrl',
+                url: 'https://example.test/i.jpg',
+            } as never,
+            7,
+        );
+        await vi.waitFor(() =>
+            expect(stubBrowser.tabs.sendMessage).toHaveBeenCalledWith(7, {
+                type: 'notification',
+                options: {
+                    level: 'loading',
+                    message: 'Uploading picture...',
+                },
+            }),
+        );
+
+        release();
+        await pending;
+        expect(uploader.queuedTasks.items).toHaveLength(1);
     });
 
     it('marks ArrayBuffer duplicates without queueing', async () => {
@@ -209,12 +233,15 @@ describe('Uploader.handleMessage photo uploads', () => {
             undefined,
         );
 
-        expect(createObjectURL).toHaveBeenCalledTimes(1);
         expect(uploader.queuedTasks.items).toEqual([]);
         expect(uploader.processedTasks).toHaveLength(1);
         expect(uploader.processedTasks[0]!.status).toBe('duplicate');
-        expect((uploader.processedTasks[0]! as { file: string }).file).toBe(
-            'blob:fake-url',
+        const duplicateId = uploader.processedTasks[0]!.id;
+        // The full blob is dropped (it never uploads); the thumbnail stays.
+        expect(dbDelete).toHaveBeenCalledWith('images', duplicateId);
+        expect(dbDelete).not.toHaveBeenCalledWith(
+            'images',
+            `${duplicateId}:thumb`,
         );
     });
 });

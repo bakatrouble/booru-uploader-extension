@@ -2,7 +2,11 @@ import { base64ToBlob } from 'file64';
 import type { IDBPDatabase } from 'idb';
 import type { Queue } from '@/utils/queue';
 import { trimProcessed } from './taskUtils';
-import { deleteStoredBlob, storeThumbnail } from './thumbnails';
+import {
+    deleteFullBlob,
+    deleteStoredBlobs,
+    storeThumbnail,
+} from './thumbnails';
 import type { UploadTask } from './types';
 
 export type PhotoMessage =
@@ -44,9 +48,10 @@ export interface PhotoIntakeContext {
 }
 
 /**
- * Stores the image bytes, runs the duplicate check against known
- * hashes, and either records a `duplicate` task or queues the file
- * for upload. Creates exactly one object URL per image.
+ * Stores the image bytes alongside a thumbnail generated right away,
+ * runs the duplicate check against known hashes, and either records a
+ * `duplicate` task or queues the file for upload. Duplicates drop the
+ * full blob immediately since they never upload.
  */
 export const enqueuePhotoFile = async (
     ctx: PhotoIntakeContext,
@@ -57,9 +62,9 @@ export const enqueuePhotoFile = async (
     const task = {
         type: 'photoFile',
         ...base,
-        file: URL.createObjectURL(blob),
     } as UploadTask;
     await ctx.db?.put('images', blob, base.id);
+    await storeThumbnail(ctx.db, base.id);
     const knownHashes = ctx.imageHashes[endpoint];
     if (knownHashes) {
         const hash = await ctx.computeHash(blob);
@@ -69,9 +74,9 @@ export const enqueuePhotoFile = async (
         ) {
             task.status = 'duplicate';
             ctx.processedTasks.unshift(task);
-            await storeThumbnail(ctx.db, base.id);
+            await deleteFullBlob(ctx.db, base.id);
             for (const evicted of trimProcessed(ctx.processedTasks)) {
-                await deleteStoredBlob(ctx.db, evicted.id);
+                await deleteStoredBlobs(ctx.db, evicted.id);
             }
             return 'duplicate';
         }

@@ -49,7 +49,6 @@ export type UploadTask = {
 } & (
     | {
           type: 'photoFile';
-          file?: string;
       }
     | {
           type: 'photoUrl';

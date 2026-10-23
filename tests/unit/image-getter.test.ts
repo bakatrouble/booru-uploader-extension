@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-    getImageBase64,
-    messageHandlerMenus,
-    messageHandlerSelector,
+    messageHandlerMenusBuffer,
+    messageHandlerSelectorBuffer,
     resolveSelectorTarget,
 } from '@/entrypoints/image-getter.content';
 import { stubBrowser } from './setup';
@@ -14,6 +13,34 @@ const mountDom = () => {
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = '<img id="inner" src="https://example.test/inner.jpg">';
     return { host, shadow };
+};
+
+class FakeWorker {
+    static instances: FakeWorker[] = [];
+    onmessage: ((e: unknown) => void) | null = null;
+    posted: unknown[] = [];
+    terminated = false;
+
+    constructor(public url: string) {
+        FakeWorker.instances.push(this);
+    }
+
+    postMessage(message: unknown, transfer?: unknown) {
+        this.posted.push([message, transfer]);
+    }
+
+    terminate() {
+        this.terminated = true;
+    }
+}
+
+const stubWorkerEnv = () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    vi.stubGlobal(
+        'createImageBitmap',
+        vi.fn(async () => ({})),
+    );
+    FakeWorker.instances = [];
 };
 
 describe('resolveSelectorTarget', () => {
@@ -35,106 +62,97 @@ describe('resolveSelectorTarget', () => {
     });
 });
 
-describe('message handlers', () => {
-    it('messageHandlerSelector throws when the target is missing', async () => {
-        mountDom();
-        await expect(messageHandlerSelector('#missing')).rejects.toThrow(
-            'No target element found',
-        );
-    });
-
-    it('messageHandlerMenus throws when there is no target element', async () => {
+describe('ArrayBuffer message handlers', () => {
+    it('menus and selector handlers throw when the target is missing', async () => {
         mountDom();
         stubBrowser.contextMenus.getTargetElement.mockReturnValueOnce(null);
-        await expect(messageHandlerMenus(123)).rejects.toThrow(
+        await expect(messageHandlerMenusBuffer(123)).rejects.toThrow(
+            'No target element found',
+        );
+        await expect(messageHandlerSelectorBuffer('#missing')).rejects.toThrow(
             'No target element found',
         );
     });
-});
 
-describe('getImageBase64', () => {
-    const fakeContext = () => ({
-        rect: vi.fn(),
-        fill: vi.fn(),
-        drawImage: vi.fn(),
-        fillStyle: '',
-    });
-
-    const stubCanvas = (toDataURL: () => string) => {
-        vi.spyOn(
-            window.HTMLCanvasElement.prototype,
-            'getContext',
-        ).mockReturnValue(fakeContext() as never);
+    it('menus handler renders off the main thread without legacy fallback', async () => {
+        // No Worker in jsdom: strict mode rejects before touching canvas.
+        const toDataURL = vi.fn(() => 'data:image/jpeg;base64,QUJD');
         vi.spyOn(
             window.HTMLCanvasElement.prototype,
             'toDataURL',
         ).mockImplementation(toDataURL as never);
-    };
-
-    const loadedImage = () => {
         const img = document.createElement('img');
-        Object.defineProperty(img, 'complete', { value: true });
-        Object.defineProperty(img, 'naturalWidth', { value: 4 });
-        Object.defineProperty(img, 'naturalHeight', { value: 3 });
-        return img;
-    };
+        stubBrowser.contextMenus.getTargetElement.mockReturnValueOnce(img);
 
-    it('draws an already-loaded image without waiting for events', async () => {
-        stubCanvas(() => 'data:image/jpeg;base64,AAA');
-        const img = loadedImage();
-
-        await expect(getImageBase64(img)).resolves.toBe(
-            'data:image/jpeg;base64,AAA',
+        await expect(messageHandlerMenusBuffer(123)).rejects.toThrow(
+            'worker encoding unsupported',
         );
+        expect(toDataURL).not.toHaveBeenCalled();
+        vi.restoreAllMocks();
     });
 
-    it('rejects a completed but broken image instead of hanging', async () => {
-        const img = document.createElement('img');
-        Object.defineProperty(img, 'complete', { value: true });
-        Object.defineProperty(img, 'naturalWidth', { value: 0 });
+    it('menus handler resolves worker-encoded bytes', async () => {
+        stubWorkerEnv();
+        try {
+            const img = document.createElement('img');
+            stubBrowser.contextMenus.getTargetElement.mockReturnValueOnce(img);
 
-        await expect(getImageBase64(img)).rejects.toThrow(
-            'Failed to load image',
-        );
-    });
-
-    it('waits for load on images still in flight', async () => {
-        stubCanvas(() => 'data:image/jpeg;base64,AAA');
-        const img = document.createElement('img');
-        img.crossOrigin = 'anonymous';
-        // Simulate a genuinely in-flight image: jsdom reports
-        // `complete` for src-less images, real loaders do not.
-        Object.defineProperty(img, 'complete', { value: false });
-        Object.defineProperty(img, 'naturalWidth', { value: 4 });
-        Object.defineProperty(img, 'naturalHeight', { value: 3 });
-
-        const pending = getImageBase64(img);
-        img.dispatchEvent(new Event('load'));
-        await expect(pending).resolves.toBe('data:image/jpeg;base64,AAA');
-    });
-
-    it('enables CORS and reports load errors as rejections', async () => {
-        const img = document.createElement('img');
-        expect(img.crossOrigin).toBeNull();
-        Object.defineProperty(img, 'complete', { value: false });
-
-        const pending = getImageBase64(img);
-        expect(img.crossOrigin).toBe('anonymous');
-        img.dispatchEvent(new Event('error'));
-        await expect(pending).rejects.toThrow('Failed to load image');
-    });
-
-    it('surfaces tainted canvases as rejections, not hangs', async () => {
-        stubCanvas(() => {
-            throw new DOMException(
-                'The operation is insecure.',
-                'SecurityError',
+            const pending = messageHandlerMenusBuffer(123);
+            await vi.waitFor(() =>
+                expect(FakeWorker.instances).toHaveLength(1),
             );
-        });
-        const img = loadedImage();
+            const buffer = new Uint8Array([1, 2, 3]).buffer;
+            FakeWorker.instances[0]!.onmessage!({
+                data: { ok: true, buffer },
+            });
+            await expect(pending).resolves.toBe(buffer);
+        } finally {
+            vi.unstubAllGlobals();
+            vi.stubGlobal('browser', stubBrowser);
+            vi.restoreAllMocks();
+        }
+    });
 
-        await expect(getImageBase64(img)).rejects.toThrow(
-            'Failed to read image data',
-        );
+    it('selector handler resolves worker-encoded bytes', async () => {
+        stubWorkerEnv();
+        try {
+            mountDom();
+
+            const pending = messageHandlerSelectorBuffer('#plain');
+            await vi.waitFor(() =>
+                expect(FakeWorker.instances).toHaveLength(1),
+            );
+            const buffer = new Uint8Array([4, 5, 6]).buffer;
+            FakeWorker.instances[0]!.onmessage!({
+                data: { ok: true, buffer },
+            });
+            const result = await pending;
+            expect(result).toBeInstanceOf(ArrayBuffer);
+            expect(Array.from(new Uint8Array(result))).toEqual([4, 5, 6]);
+        } finally {
+            vi.unstubAllGlobals();
+            vi.stubGlobal('browser', stubBrowser);
+            vi.restoreAllMocks();
+        }
+    });
+
+    it('worker errors reject instead of falling back', async () => {
+        stubWorkerEnv();
+        try {
+            mountDom();
+
+            const pending = messageHandlerSelectorBuffer('#plain');
+            await vi.waitFor(() =>
+                expect(FakeWorker.instances).toHaveLength(1),
+            );
+            FakeWorker.instances[0]!.onmessage!({
+                data: { ok: false, message: 'boom' },
+            });
+            await expect(pending).rejects.toThrow('boom');
+        } finally {
+            vi.unstubAllGlobals();
+            vi.stubGlobal('browser', stubBrowser);
+            vi.restoreAllMocks();
+        }
     });
 });

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     enqueuePhotoFile,
     normalizePhotoInput,
@@ -41,19 +41,6 @@ describe('normalizePhotoInput', () => {
 });
 
 describe('enqueuePhotoFile', () => {
-    let createObjectURL: ReturnType<typeof vi.fn>;
-    let realCreateObjectURL: typeof URL.createObjectURL | undefined;
-
-    beforeEach(() => {
-        realCreateObjectURL = URL.createObjectURL;
-        createObjectURL = vi.fn(() => 'blob:fake-url');
-        URL.createObjectURL = createObjectURL as never;
-    });
-
-    afterEach(() => {
-        URL.createObjectURL = realCreateObjectURL as never;
-    });
-
     const base = {
         id: 'task-1',
         endpoint: 'https://example.test',
@@ -61,11 +48,18 @@ describe('enqueuePhotoFile', () => {
         status: 'queued' as const,
     };
 
-    it('queues with a single object URL when hashes are unknown', async () => {
-        const dbPut = vi.fn(async () => {});
+    const makeDb = (full: Blob | null) => ({
+        put: vi.fn(async () => {}),
+        get: vi.fn(async () => full),
+        delete: vi.fn(async () => {}),
+    });
+
+    it('stores the full blob plus a thumbnail, then queues', async () => {
+        const blob = new Blob(['pixels'], { type: 'image/jpeg' });
+        const db = makeDb(blob);
         const computeHash = vi.fn(async () => 'deadbeef');
         const ctx: PhotoIntakeContext = {
-            db: { put: dbPut } as never,
+            db: db as never,
             imageHashes: {},
             queuedTasks: new Queue<UploadTask>(),
             processedTasks: [],
@@ -73,22 +67,27 @@ describe('enqueuePhotoFile', () => {
             getHash: vi.fn(async () => false),
         };
 
-        const blob = new Blob(['pixels'], { type: 'image/jpeg' });
         await expect(
             enqueuePhotoFile(ctx, base, blob, 'https://example.test'),
         ).resolves.toBe(true);
 
-        expect(createObjectURL).toHaveBeenCalledTimes(1);
+        expect(db.put).toHaveBeenCalledWith('images', blob, 'task-1');
+        expect(db.put).toHaveBeenCalledWith(
+            'images',
+            expect.any(Blob),
+            'task-1:thumb',
+        );
         expect(ctx.queuedTasks.items).toHaveLength(1);
-        expect(dbPut).toHaveBeenCalledWith('images', blob, 'task-1');
+        expect(ctx.queuedTasks.items[0]).not.toHaveProperty('file');
         expect(computeHash).not.toHaveBeenCalled();
     });
 
-    it('marks duplicates without queueing', async () => {
-        const dbPut = vi.fn(async () => {});
+    it('marks duplicates without queueing and drops the full blob', async () => {
+        const blob = new Blob(['pixels'], { type: 'image/jpeg' });
+        const db = makeDb(blob);
         const getHash = vi.fn(async () => true);
         const ctx: PhotoIntakeContext = {
-            db: { put: dbPut } as never,
+            db: db as never,
             imageHashes: { 'https://example.test': new Set(['deadbeef']) },
             queuedTasks: new Queue<UploadTask>(),
             processedTasks: [],
@@ -96,7 +95,6 @@ describe('enqueuePhotoFile', () => {
             getHash,
         };
 
-        const blob = new Blob(['pixels'], { type: 'image/jpeg' });
         await expect(
             enqueuePhotoFile(ctx, base, blob, 'https://example.test'),
         ).resolves.toBe('duplicate');
@@ -108,5 +106,8 @@ describe('enqueuePhotoFile', () => {
             'https://example.test',
             'deadbeef',
         );
+        // Full blob dropped (never uploads); thumbnail stays for display.
+        expect(db.delete).toHaveBeenCalledWith('images', 'task-1');
+        expect(db.delete).not.toHaveBeenCalledWith('images', 'task-1:thumb');
     });
 });

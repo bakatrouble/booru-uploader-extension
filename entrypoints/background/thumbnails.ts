@@ -1,10 +1,11 @@
 import type { IDBPDatabase } from 'idb';
+import { IMAGE_STORE, thumbKeyFor } from '@/utils/imageStore';
 
 export const THUMBNAIL_MAX_EDGE = 256;
 export const THUMBNAIL_MIME = 'image/jpeg';
 export const THUMBNAIL_QUALITY = 0.7;
 
-const STORE_NAME = 'images' as const;
+export type ImageStore = Pick<IDBPDatabase, 'get' | 'put' | 'delete'>;
 
 /**
  * Downscales an image blob so its longest edge fits `maxEdge`, encoded
@@ -51,34 +52,50 @@ export const makeThumbnail = async (
     }
 };
 
-type ImageStore = Pick<IDBPDatabase, 'get' | 'put' | 'delete'>;
-
 /**
- * Replaces the stored full-size blob with a thumbnail. Failed tasks
- * keep their full blob so a later retry can upload it.
+ * Generates the thumbnail for a stored full-size blob and keeps it
+ * under the thumbnail key. Runs at intake so queued tasks already
+ * have something to display.
  */
 export const storeThumbnail = async (
     db: ImageStore | undefined,
     key: string,
 ): Promise<void> => {
     try {
-        const stored = await db?.get(STORE_NAME, key);
+        const stored = await db?.get(IMAGE_STORE, key);
         if (stored instanceof Blob) {
-            await db?.put(STORE_NAME, await makeThumbnail(stored), key);
+            await db?.put(
+                IMAGE_STORE,
+                await makeThumbnail(stored),
+                thumbKeyFor(key),
+            );
         }
     } catch (e) {
         console.error('Error storing thumbnail:', e);
     }
 };
 
-/** Deletes whatever is stored for a task (full blob or thumbnail). */
-export const deleteStoredBlob = async (
+/** Deletes the full-size blob, keeping the thumbnail. */
+export const deleteFullBlob = async (
     db: ImageStore | undefined,
     key: string,
 ): Promise<void> => {
     try {
-        await db?.delete(STORE_NAME, key);
+        await db?.delete(IMAGE_STORE, key);
     } catch (e) {
         console.error('Error deleting stored image:', e);
+    }
+};
+
+/** Deletes everything stored for a task (full blob and thumbnail). */
+export const deleteStoredBlobs = async (
+    db: ImageStore | undefined,
+    key: string,
+): Promise<void> => {
+    await deleteFullBlob(db, key);
+    try {
+        await db?.delete(IMAGE_STORE, thumbKeyFor(key));
+    } catch (e) {
+        console.error('Error deleting stored thumbnail:', e);
     }
 };

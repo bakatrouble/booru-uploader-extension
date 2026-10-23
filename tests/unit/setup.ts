@@ -33,7 +33,7 @@ const stubBrowser = {
             return options.id ?? options.title;
         }),
         remove: vi.fn(async () => {}),
-        getTargetElement: vi.fn(() => null),
+        getTargetElement: vi.fn((): any => null),
         onClicked: {
             addListener: vi.fn((listener: (...args: any[]) => unknown) => {
                 menusClickListeners.push(listener);

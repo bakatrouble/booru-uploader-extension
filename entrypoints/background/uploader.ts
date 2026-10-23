@@ -5,8 +5,8 @@ import { ContextMenuManager } from '@/utils/context-menu';
 import { NotificationLevel } from '@/utils/enums';
 import { isDev } from '@/utils/env';
 import HasherWorker from '@/utils/hasherWorker?worker';
-import { Mutex } from '@/utils/mutex';
 import { Queue } from '@/utils/queue';
+import { Semaphore } from '@/utils/semaphore';
 import {
     attemptUpload,
     MAX_UPLOAD_RETRIES,
@@ -25,7 +25,7 @@ import {
     retryFailedTask,
     trimProcessed,
 } from './taskUtils';
-import { deleteStoredBlob, storeThumbnail } from './thumbnails';
+import { deleteFullBlob, deleteStoredBlobs } from './thumbnails';
 import type {
     ExternalMessage,
     PortMessage,
@@ -49,7 +49,12 @@ export class Uploader {
     imageHashes: Record<string, Set<string>> = {};
     contextMenuManager: ContextMenuManager;
     hasherWorker: Worker;
-    uploadLock = new Mutex();
+    /**
+     * Caps concurrent intake handling so a slow hash or idb write does
+     * not stall every other upload. Notifications go out before
+     * acquiring, so feedback stays immediate under load.
+     */
+    uploadGate = new Semaphore(3);
 
     constructor() {
         browser.browserAction.setBadgeBackgroundColor({ color: 'teal' });
@@ -121,11 +126,9 @@ export class Uploader {
     async handleMessage(message: ExternalMessage, tabId?: number) {
         if (message.type !== 'upload') return;
 
-        const releaseLock = await this.uploadLock.acquire();
-        try {
-            let notificationId: string | undefined;
-
-            if (tabId) {
+        let notificationId: string | undefined;
+        if (tabId) {
+            try {
                 notificationId = await browser.tabs.sendMessage(tabId, {
                     type: 'notification',
                     options: {
@@ -133,8 +136,15 @@ export class Uploader {
                         message: `Uploading ${message.method === 'gif' ? 'GIF' : 'picture'}...`,
                     },
                 });
+            } catch (e) {
+                // The tab is gone or has no content script; upload anyway
+                // without progress feedback.
+                console.error('Error sending notification:', e);
             }
+        }
 
+        const releaseGate = await this.uploadGate.acquire();
+        try {
             try {
                 await this.getHashes(message.endpoint);
             } catch (e) {
@@ -207,7 +217,7 @@ export class Uploader {
             this.sendUpdateToPorts();
             return {};
         } finally {
-            releaseLock();
+            releaseGate();
         }
     }
 
@@ -244,7 +254,7 @@ export class Uploader {
                         msg.id,
                     );
                     if (removed) {
-                        await deleteStoredBlob(this.db, removed.id);
+                        await deleteStoredBlobs(this.db, removed.id);
                     }
                     this.sendUpdateToPorts();
                     break;
@@ -337,7 +347,7 @@ export class Uploader {
                         task.status === 'duplicate') &&
                     task.type === 'photoFile'
                 ) {
-                    await storeThumbnail(this.db, task.id);
+                    await deleteFullBlob(this.db, task.id);
                 }
             } catch (e) {
                 console.error('Error processing task:', e);
@@ -346,7 +356,7 @@ export class Uploader {
                 this.queuedTasks.shift();
                 this.processedTasks.unshift(task);
                 for (const evicted of trimProcessed(this.processedTasks)) {
-                    await deleteStoredBlob(this.db, evicted.id);
+                    await deleteStoredBlobs(this.db, evicted.id);
                 }
                 if (this.queuedTasks.items.length === 0) {
                     this.processingDisplaying = false;

@@ -118,12 +118,11 @@ describe('ContextMenuManager.callback', () => {
         expect(uploader.handleMessage).not.toHaveBeenCalled();
     });
 
-    it('forwards a destination click as a base64 upload', async () => {
+    it('forwards a destination click as an ArrayBuffer upload', async () => {
         const { manager, uploader } = makeManager();
         await flushInit();
-        stubBrowser.tabs.sendMessage.mockResolvedValueOnce(
-            'data:image/jpeg;base64,AAA',
-        );
+        const buffer = new Uint8Array([1, 2, 3]).buffer;
+        stubBrowser.tabs.sendMessage.mockResolvedValueOnce(buffer);
         await manager.callback(
             {
                 menuItemId: `${MenuIds.Destination}l1`,
@@ -132,14 +131,15 @@ describe('ContextMenuManager.callback', () => {
             { id: 9 } as never,
         );
         expect(stubBrowser.tabs.sendMessage).toHaveBeenCalledWith(9, {
-            type: 'getImageMenusBase64',
+            type: 'getImageMenusArrayBuffer',
             targetElementId: 5,
         });
         expect(uploader.handleMessage).toHaveBeenCalledWith(
             {
                 type: 'upload',
-                method: 'photoBase64',
-                data: 'data:image/jpeg;base64,AAA',
+                method: 'photoArrayBuffer',
+                data: buffer,
+                mimeType: 'image/jpeg',
                 endpoint: 'https://one.test',
             },
             9,

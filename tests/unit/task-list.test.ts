@@ -1,7 +1,14 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { UploadTask } from '@/entrypoints/background/uploader';
 import TaskList from '@/entrypoints/popup/uploads-tab/TaskList.vue';
+import { readTaskThumbnail } from '@/utils/imageStore';
+
+vi.mock('@/utils/imageStore', () => ({
+    readTaskThumbnail: vi.fn(),
+}));
+
+const mockedReadThumbnail = vi.mocked(readTaskThumbnail);
 
 const makeTask = (
     id: string,
@@ -14,9 +21,7 @@ const makeTask = (
         retries: 0,
         status,
         type,
-        ...(type === 'photoFile'
-            ? { file: 'blob:fake' }
-            : { url: 'https://example.test/i.jpg' }),
+        ...(type === 'photoFile' ? {} : { url: 'https://example.test/i.jpg' }),
     }) as UploadTask;
 
 const mountList = (tasks: UploadTask[]) =>
@@ -39,14 +44,40 @@ describe('TaskList', () => {
         wrapper.unmount();
     });
 
-    it('shows a thumbnail only for file tasks', () => {
-        const wrapper = mountList([
-            makeTask('a', 'photoFile', 'queued'),
-            makeTask('b', 'photoUrl', 'queued'),
-        ]);
-        const images = wrapper.findAll('.task-cell img');
-        expect(images).toHaveLength(1);
-        expect(images[0]!.attributes('src')).toBe('blob:fake');
+    it('renders stored thumbnails for file tasks and remote urls directly', async () => {
+        mockedReadThumbnail.mockResolvedValue(
+            new Blob(['thumb'], { type: 'image/jpeg' }),
+        );
+        const createObjectURL = vi
+            .fn(() => 'blob:fake')
+            .mockName('createObjectURL');
+        const realCreateObjectURL = URL.createObjectURL;
+        URL.createObjectURL = createObjectURL as never;
+        try {
+            const wrapper = mountList([
+                makeTask('a', 'photoFile', 'queued'),
+                makeTask('b', 'photoUrl', 'queued'),
+            ]);
+            await vi.waitFor(() => {
+                expect(wrapper.findAll('.task-cell img')).toHaveLength(2);
+            });
+            const images = wrapper.findAll('.task-cell img');
+            expect(images[0]!.attributes('src')).toBe('blob:fake');
+            expect(images[1]!.attributes('src')).toBe(
+                'https://example.test/i.jpg',
+            );
+            expect(mockedReadThumbnail).toHaveBeenCalledWith('a');
+            wrapper.unmount();
+        } finally {
+            URL.createObjectURL = realCreateObjectURL as never;
+        }
+    });
+
+    it('shows no image when nothing is stored for a file task', async () => {
+        mockedReadThumbnail.mockResolvedValue(null);
+        const wrapper = mountList([makeTask('a', 'photoFile', 'queued')]);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(wrapper.findAll('.task-cell img')).toHaveLength(0);
         wrapper.unmount();
     });
 

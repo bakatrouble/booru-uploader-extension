@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TaskThumbnail from '@/entrypoints/popup/uploads-tab/TaskThumbnail.vue';
 import AppButton from '../../../components/AppButton.vue';
 import Spinner from '../../../components/Spinner.vue';
 import type { UploadTask } from '../../background/uploader';
@@ -16,7 +17,7 @@ const emit = defineEmits<{
 <template>
     <div v-if="tasks.length > 0" class="task-list">
         <div v-for="task in tasks" class="task-cell">
-            <img v-if="task.type === 'photoFile'" :src="task.file!" />
+            <task-thumbnail :task="task" />
             <div class="task-status-container">
                 <spinner v-if="['queued', 'processing'].includes(task.status)" size="30" color="white" class="task-spinner" />
                 <span>{{ task.status }}</span>
@@ -47,10 +48,10 @@ const emit = defineEmits<{
         aspect-ratio: 1
         position: relative
 
-        &:hover img
+        &:hover :deep(img)
             opacity: .3
 
-        img
+        :deep(img)
             @include absolute-stretch
             object-fit: cover
             border-radius: .5rem

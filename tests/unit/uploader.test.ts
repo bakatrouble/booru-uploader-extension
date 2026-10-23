@@ -178,6 +178,9 @@ describe('Uploader.handlePortConnection', () => {
         expect(uploader.processedTasks).toEqual([]);
         expect(dbDelete).toHaveBeenCalledWith('images', 'p1');
         await vi.waitFor(() =>
+            expect(dbDelete).toHaveBeenCalledWith('images', 'p1:thumb'),
+        );
+        await vi.waitFor(() =>
             expect(port.postMessage).toHaveBeenCalledTimes(3),
         );
 
