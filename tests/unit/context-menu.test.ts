@@ -19,8 +19,8 @@ const flushInit = () =>
 describe('ContextMenuManager.init', () => {
     beforeEach(() => {
         storageData.uploadLinks = [
-            { id: 'l1', name: 'First', url: 'https://one.test' },
-            { id: 'l2', name: 'Second', url: 'https://two.test' },
+            { id: 'l1', name: 'First', apiKey: 'key-one' },
+            { id: 'l2', name: 'Second', apiKey: 'key-two' },
         ];
     });
 
@@ -77,7 +77,7 @@ describe('ContextMenuManager.init', () => {
 describe('ContextMenuManager.callback', () => {
     beforeEach(() => {
         storageData.uploadLinks = [
-            { id: 'l1', name: 'First', url: 'https://one.test' },
+            { id: 'l1', name: 'First', apiKey: 'key-one' },
         ];
     });
 
@@ -134,7 +134,7 @@ describe('ContextMenuManager.callback', () => {
                 method: 'photoArrayBuffer',
                 data: buffer,
                 mimeType: 'image/jpeg',
-                endpoint: 'https://one.test',
+                apiKey: 'key-one',
             },
             9,
         );

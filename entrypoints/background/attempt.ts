@@ -5,9 +5,10 @@ export const UPLOAD_TIMEOUT_MS = 60_000;
 
 /** Minimal upload surface the background worker needs. */
 export interface UploadEndpoint {
-    postPhoto(body: FormData): Promise<UploadResponse>;
-    postPhotoUrl(url: string): Promise<UploadResponse>;
-    postGif(url: string): Promise<UploadResponse>;
+    /** Raw file bytes → `POST {apiRoot}/upload` (`application/octet-stream`). */
+    postFile(blob: Blob): Promise<UploadResponse>;
+    /** Remote URL ingest → `POST {apiRoot}/upload-url` (`{"url": ...}`). */
+    postUrl(url: string): Promise<UploadResponse>;
 }
 
 export type BlobProvider = () => Promise<Blob | null | undefined>;
@@ -15,6 +16,7 @@ export type BlobProvider = () => Promise<Blob | null | undefined>;
 export type AttemptOutcome = {
     outcome: 'complete' | 'duplicate' | 'failed';
     hash?: string;
+    uploadId?: string;
     retries: number;
 };
 
@@ -69,17 +71,12 @@ export const attemptUpload = async (
                     case 'photoFile': {
                         const blob = await getBlob();
                         if (!blob) return { outcome: 'failed' as const };
-                        const body = new FormData();
-                        body.append('upload', blob, `image-${task.id}.jpg`);
-                        response = await endpoint.postPhoto(body);
+                        response = await endpoint.postFile(blob);
                         break;
                     }
-                    case 'photoUrl': {
-                        response = await endpoint.postPhotoUrl(task.url);
-                        break;
-                    }
+                    case 'photoUrl':
                     case 'gif': {
-                        response = await endpoint.postGif(task.url);
+                        response = await endpoint.postUrl(task.url);
                         break;
                     }
                 }
@@ -93,6 +90,7 @@ export const attemptUpload = async (
                     return {
                         outcome: 'complete' as const,
                         hash: response.hash,
+                        uploadId: response.upload_id || undefined,
                     };
                 }
                 return { outcome: 'failed' as const };

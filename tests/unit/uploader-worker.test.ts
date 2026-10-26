@@ -35,7 +35,7 @@ const mockedExtend = vi.mocked(ky.extend);
 const makeTask = (overrides: Partial<UploadTask> = {}): UploadTask =>
     ({
         id: 'w1',
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 0,
         status: 'queued',
         type: 'photoUrl',
@@ -64,7 +64,7 @@ const makeUploader = (tasks: UploadTask[]) => {
     uploader.processedTasks = [];
     uploader.ports = new Set([{ postMessage: vi.fn() } as never]);
     // Intake always runs getHashes first, creating the endpoint set.
-    uploader.imageHashes = { 'https://example.test': new Set() };
+    uploader.imageHashes = { 'test-key': new Set() };
     uploader.processingDisplaying = false;
     uploader.db = {
         get: vi.fn(async () => null),
@@ -79,6 +79,7 @@ describe('Uploader.worker', () => {
         mockedExtend.mockReset();
         mockedExtend.mockReturnValue({
             post: () => ({
+                status: 200,
                 json: async () => ({
                     status: 'ok',
                     hash: 'h1',
@@ -95,9 +96,7 @@ describe('Uploader.worker', () => {
         const [task] = uploader.processedTasks;
         expect(task!.status).toBe('complete');
         expect(task!.retries).toBe(0);
-        expect(uploader.imageHashes['https://example.test']).toEqual(
-            new Set(['h1']),
-        );
+        expect(uploader.imageHashes['test-key']).toEqual(new Set(['h1']));
         expect(uploader.queuedTasks.items).toEqual([]);
         const [port] = [...uploader.ports];
         const lastMessage = (
@@ -130,6 +129,7 @@ describe('Uploader.worker', () => {
     it('marks unrecoverable server errors failed without retrying', async () => {
         mockedExtend.mockReturnValue({
             post: () => ({
+                status: 400,
                 json: async () => ({ status: 'error', message: 'bad' }),
             }),
         } as never);

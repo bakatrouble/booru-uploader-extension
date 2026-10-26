@@ -44,7 +44,7 @@ export interface PhotoIntakeContext {
     queuedTasks: Queue<UploadTask>;
     processedTasks: UploadTask[];
     computeHash: (blob: Blob) => Promise<string>;
-    getHash: (endpoint: string, hash: string) => Promise<boolean>;
+    getHash: (apiKey: string, hash: string) => Promise<boolean>;
 }
 
 /**
@@ -55,9 +55,9 @@ export interface PhotoIntakeContext {
  */
 export const enqueuePhotoFile = async (
     ctx: PhotoIntakeContext,
-    base: Pick<UploadTask, 'id' | 'endpoint' | 'retries' | 'status'>,
+    base: Pick<UploadTask, 'id' | 'apiKey' | 'retries' | 'status'>,
     blob: Blob,
-    endpoint: string,
+    apiKey: string,
 ): Promise<true | 'duplicate'> => {
     const task = {
         type: 'photoFile',
@@ -65,12 +65,12 @@ export const enqueuePhotoFile = async (
     } as UploadTask;
     await ctx.db?.put('images', blob, base.id);
     await storeThumbnail(ctx.db, base.id);
-    const knownHashes = ctx.imageHashes[endpoint];
+    const knownHashes = ctx.imageHashes[apiKey];
     if (knownHashes) {
         const hash = await ctx.computeHash(blob);
         if (
             knownHashes.has(hash.toString()) &&
-            (await ctx.getHash(endpoint, hash))
+            (await ctx.getHash(apiKey, hash))
         ) {
             task.status = 'duplicate';
             ctx.processedTasks.unshift(task);

@@ -28,7 +28,7 @@ const openRealDb = (): Promise<IDBPDatabase> =>
 
 const baseTask = {
     id: 'task-1',
-    endpoint: 'https://example.test',
+    apiKey: 'test-key',
     retries: 0,
     status: 'queued' as const,
 };
@@ -93,7 +93,7 @@ describe('thumbnail lifecycle in IndexedDB', () => {
         const blob = new Blob(['pixels'], { type: 'image/png' });
 
         await expect(
-            enqueuePhotoFile(ctx, baseTask, blob, 'https://example.test'),
+            enqueuePhotoFile(ctx, baseTask, blob, 'test-key'),
         ).resolves.toBe(true);
 
         expect(computeHash).not.toHaveBeenCalled();
@@ -108,13 +108,13 @@ describe('thumbnail lifecycle in IndexedDB', () => {
         stubImaging();
         const db = await openRealDb();
         const { ctx, getHash } = makeCtx(db, {
-            'https://example.test': new Set(['deadbeef']),
+            'test-key': new Set(['deadbeef']),
         });
         getHash.mockResolvedValue(true);
         const blob = new Blob(['pixels'], { type: 'image/png' });
 
         await expect(
-            enqueuePhotoFile(ctx, baseTask, blob, 'https://example.test'),
+            enqueuePhotoFile(ctx, baseTask, blob, 'test-key'),
         ).resolves.toBe('duplicate');
 
         expect(await db.get(IMAGE_STORE, 'task-1')).toBeUndefined();

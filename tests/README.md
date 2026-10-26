@@ -30,10 +30,13 @@
   returns the removed task (any processed status, queued unless
   processing); `trimProcessed` evicts oldest terminal tasks but never
   failed ones; `retryFailedTask` requeues failures with reset retries.
-- `uploader.test.ts` — `getKyClient` endpoint scoping (`prefix`); `getHashes`
-  caching; `getHash` hit/miss bookkeeping; `handleExternalMessage` routing
+- `uploader.test.ts` — `getKyClient` api-root scoping (`prefix` + `x-key`
+  header); `getHashes` caching; `getHash` hit/miss bookkeeping;
+  `handleExternalMessage` routing
   (upload/getUploadLinks/updateContextMenu); port connect/message/disconnect;
-  `computeHash` ignoring stale worker responses (pins the fixed id-matching).
+  `computeHash` ignoring stale worker responses (pins the fixed id-matching);
+  `parseUploadResponse` mapping (200 ok/duplicate, 400 duplicate vs error,
+  retry on unexpected statuses).
 - `uploader-upload.test.ts` — `handleMessage` photo paths: full blob +
   thumbnail stored atomically at intake, base64 with/without the
   `data:` prefix (raw defaults to JPEG), `photoArrayBuffer` MIME default,
@@ -63,7 +66,10 @@
   handlers (strict no-legacy menus path, legacy selector path).
 - `upload-links.test.ts` — `moveUploadLink` moves and boundary refusals
   (the options-page reorder buttons); `isValidEndpointUrl` accepts
-  absolute http(s) URLs and rejects the rest.
+  absolute http(s) URLs and rejects the rest; `normalizeUploadLinks` drops
+  the legacy per-destination `url` in favor of the api key.
+- `api-root.test.ts` — `resolveApiRoot` stored/env/default fallback,
+  `normalizeApiRoot` trailing-slash stripping.
 - `use-sync-storage.test.ts` — backward-compatible reads (native values
   stored by older versions), JSON round-trips, defaults.
 - `amo-auth.test.ts` — AMO JWT carries `iss` with a 300s expiry.

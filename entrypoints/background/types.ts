@@ -14,7 +14,8 @@ export type ExternalMessage =
       }
     | ({
           type: 'upload';
-          endpoint: string;
+          /** Destination API key, sent as the `x-key` header. */
+          apiKey: string;
       } & (
           | {
                 method: 'photoBase64';
@@ -55,7 +56,10 @@ export type ExternalMessage =
 
 export type UploadTask = {
     id: string;
-    endpoint: string;
+    /** Destination API key, sent as the `x-key` header. */
+    apiKey: string;
+    /** Server-side task id from a completed upload (for `/delete`). */
+    uploadId?: string;
     retries: number;
     status: 'queued' | 'processing' | 'complete' | 'duplicate' | 'failed';
 } & (

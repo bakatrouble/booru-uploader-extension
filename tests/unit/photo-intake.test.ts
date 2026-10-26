@@ -43,7 +43,7 @@ describe('normalizePhotoInput', () => {
 describe('enqueuePhotoFile', () => {
     const base = {
         id: 'task-1',
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 0,
         status: 'queued' as const,
     };
@@ -68,7 +68,7 @@ describe('enqueuePhotoFile', () => {
         };
 
         await expect(
-            enqueuePhotoFile(ctx, base, blob, 'https://example.test'),
+            enqueuePhotoFile(ctx, base, blob, 'test-key'),
         ).resolves.toBe(true);
 
         expect(db.put).toHaveBeenCalledWith('images', blob, 'task-1');
@@ -88,7 +88,7 @@ describe('enqueuePhotoFile', () => {
         const getHash = vi.fn(async () => true);
         const ctx: PhotoIntakeContext = {
             db: db as never,
-            imageHashes: { 'https://example.test': new Set(['deadbeef']) },
+            imageHashes: { 'test-key': new Set(['deadbeef']) },
             queuedTasks: new Queue<UploadTask>(),
             processedTasks: [],
             computeHash: vi.fn(async () => 'deadbeef'),
@@ -96,16 +96,13 @@ describe('enqueuePhotoFile', () => {
         };
 
         await expect(
-            enqueuePhotoFile(ctx, base, blob, 'https://example.test'),
+            enqueuePhotoFile(ctx, base, blob, 'test-key'),
         ).resolves.toBe('duplicate');
 
         expect(ctx.queuedTasks.items).toEqual([]);
         expect(ctx.processedTasks).toHaveLength(1);
         expect(ctx.processedTasks[0]!.status).toBe('duplicate');
-        expect(getHash).toHaveBeenCalledWith(
-            'https://example.test',
-            'deadbeef',
-        );
+        expect(getHash).toHaveBeenCalledWith('test-key', 'deadbeef');
         // Full blob dropped (never uploads); thumbnail stays for display.
         expect(db.delete).toHaveBeenCalledWith('images', 'task-1');
         expect(db.delete).not.toHaveBeenCalledWith('images', 'task-1:thumb');

@@ -113,7 +113,7 @@ describe('Uploader.handleMessage photo uploads', () => {
         await uploader.handleMessage(
             {
                 type: 'upload',
-                endpoint: 'https://example.test',
+                apiKey: 'test-key',
                 method: 'photoBase64',
                 data: `data:image/png;base64,${tinyPngBase64}`,
             } as never,
@@ -138,7 +138,7 @@ describe('Uploader.handleMessage photo uploads', () => {
         await uploader.handleMessage(
             {
                 type: 'upload',
-                endpoint: 'https://example.test',
+                apiKey: 'test-key',
                 method: 'photoBase64',
                 data: tinyPngBase64,
             } as never,
@@ -155,7 +155,7 @@ describe('Uploader.handleMessage photo uploads', () => {
         await uploader.handleMessage(
             {
                 type: 'upload',
-                endpoint: 'https://example.test',
+                apiKey: 'test-key',
                 method: 'photoArrayBuffer',
                 data: bytes.buffer,
                 mimeType: 'image/png',
@@ -175,7 +175,7 @@ describe('Uploader.handleMessage photo uploads', () => {
         await uploader.handleMessage(
             {
                 type: 'upload',
-                endpoint: 'https://example.test',
+                apiKey: 'test-key',
                 method: 'photoArrayBuffer',
                 data: bytes.buffer,
             } as never,
@@ -193,7 +193,7 @@ describe('Uploader.handleMessage photo uploads', () => {
         const pending = uploader.handleMessage(
             {
                 type: 'upload',
-                endpoint: 'https://example.test',
+                apiKey: 'test-key',
                 method: 'photoUrl',
                 url: 'https://example.test/i.jpg',
             } as never,
@@ -228,7 +228,7 @@ describe('Uploader.handleMessage photo uploads', () => {
         const pending = uploader.handleMessage(
             {
                 type: 'upload',
-                endpoint: 'https://example.test',
+                apiKey: 'test-key',
                 method: 'photoArrayBuffer',
                 data: new Uint8Array([1, 2, 3]).buffer,
             } as never,
@@ -253,7 +253,7 @@ describe('Uploader.handleMessage photo uploads', () => {
     });
 
     it('marks ArrayBuffer duplicates without queueing', async () => {
-        uploader.imageHashes['https://example.test'] = new Set(['deadbeef']);
+        uploader.imageHashes['test-key'] = new Set(['deadbeef']);
         mockedExtend.mockReturnValue({
             get: (path: string) => {
                 if (path === 'hashes') {
@@ -267,7 +267,7 @@ describe('Uploader.handleMessage photo uploads', () => {
         await uploader.handleMessage(
             {
                 type: 'upload',
-                endpoint: 'https://example.test',
+                apiKey: 'test-key',
                 method: 'photoArrayBuffer',
                 data: bytes.buffer,
             } as never,

@@ -2,42 +2,84 @@
 import {
     mdiArrowDown,
     mdiArrowUp,
-    mdiContentSave,
-    mdiDelete,
+    mdiClose,
+    mdiKeyboard,
     mdiPlus,
 } from '@mdi/js';
 import { useStorageAsync } from '@vueuse/core';
 import { uuidv4 } from 'uuidv7';
-import { isValidEndpointUrl, moveUploadLink } from '@/utils/uploadLinks';
+import { DEFAULT_API_ROOT } from '@/utils/apiRoot';
+import {
+    isValidEndpointUrl,
+    moveUploadLink,
+    normalizeUploadLinks,
+} from '@/utils/uploadLinks';
 import { browserSyncStorage } from '@/utils/useSyncStorage';
 import HotkeyButton from './HotkeyButton.vue';
 
+const apiRoot = useStorageAsync<string>(
+    'apiRoot',
+    DEFAULT_API_ROOT,
+    browserSyncStorage,
+);
 const uploadLinks = useStorageAsync<UploadLink[]>(
     'uploadLinks',
     [],
     browserSyncStorage,
 );
-const savedNotification = ref(false);
 
 const getUuid = () => uuidv4();
 
-const save = async () => {
-    savedNotification.value = true;
-    setTimeout(() => (savedNotification.value = false), 3000);
-    await browser.runtime.sendMessage({
-        type: 'updateContextMenu',
-    });
+const notifyBackground = () => {
+    void browser.runtime
+        .sendMessage({ type: 'updateContextMenu' })
+        .catch(() => {});
 };
+
+// Drop the pre-migration `url` field once the stored list loads.
+watch(
+    uploadLinks,
+    (links) => {
+        if (!Array.isArray(links)) return;
+        if (
+            links.some(
+                (l) => 'url' in (l as unknown as Record<string, unknown>),
+            )
+        ) {
+            uploadLinks.value = normalizeUploadLinks(links);
+        }
+    },
+    { immediate: true },
+);
+
+// Persisted automatically by useStorageAsync; just refresh the menus.
+watch([apiRoot, uploadLinks], notifyBackground, { deep: true });
 </script>
 
 <template>
         <div class="p-4 flex flex-col justify-start">
             <h1 class="text-2xl font-bold mb-4">Booru uploader destinations</h1>
+            <div class="max-w-6xl mb-4">
+                <label class="font-bold block mb-1" for="api-root">API root</label>
+                <input
+                    id="api-root"
+                    type="text"
+                    v-model="apiRoot"
+                    placeholder="http://127.0.0.1:8080"
+                    :class="{ invalid: apiRoot && !isValidEndpointUrl(apiRoot) }"
+                />
+                <div
+                    v-if="apiRoot && !isValidEndpointUrl(apiRoot)"
+                    class="url-error"
+                >
+                    Must be an absolute http(s) URL
+                </div>
+            </div>
             <transition-group tag="div" class="max-w-6xl relative">
                 <div class="row font-bold">
                     <div>Full name</div>
                     <div>Short name</div>
-                    <div>URL</div>
+                    <div>API key</div>
                     <div>Hotkey</div>
                     <div />
                 </div>
@@ -56,16 +98,11 @@ const save = async () => {
                     </div>
                     <div>
                         <input
-                            type="text"
-                            v-model="item.url"
-                            :class="{ invalid: item.url && !isValidEndpointUrl(item.url) }"
+                            type="password"
+                            v-model="item.apiKey"
+                            autocomplete="off"
+                            placeholder="x-key"
                         />
-                        <div
-                            v-if="item.url && !isValidEndpointUrl(item.url)"
-                            class="url-error"
-                        >
-                            Must be an absolute http(s) URL
-                        </div>
                     </div>
                     <div>
                         <hotkey-button v-model="item.hotkey" />
@@ -86,7 +123,7 @@ const save = async () => {
             <span>
                 <button
                     class="mr-2 flex flex-row "
-                    @click="uploadLinks.push({ id: getUuid(), name: '', shortName: '', url: '', hotkey: [] })"
+                    @click="uploadLinks.push({ id: getUuid(), name: '', shortName: '', apiKey: '', hotkey: [] })"
                 >
                     <mdicon name="plus" /> Add
                 </button>
@@ -104,7 +141,8 @@ const save = async () => {
             text-gray-50;
     }
 
-    input[type="text"] {
+    input[type="text"],
+    input[type="password"] {
         @apply
             bg-gray-500
             text-gray-50

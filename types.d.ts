@@ -82,7 +82,7 @@ declare global {
         id: string;
         name: string;
         shortName: string;
-        url: string;
+        apiKey: string;
         hotkey: string[];
     }
 }

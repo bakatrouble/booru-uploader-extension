@@ -12,7 +12,7 @@ const okResponse = { status: 'ok', upload_id: 'u1', hash: 'h1' } as const;
 const makeTask = (overrides: Partial<UploadTask> = {}): UploadTask =>
     ({
         id: 't1',
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 0,
         status: 'queued',
         type: 'photoUrl',
@@ -21,9 +21,8 @@ const makeTask = (overrides: Partial<UploadTask> = {}): UploadTask =>
     }) as UploadTask;
 
 const makeEndpoint = (impl: Partial<UploadEndpoint>): UploadEndpoint => ({
-    postPhoto: vi.fn(async () => ({ ...okResponse })),
-    postPhotoUrl: vi.fn(async () => ({ ...okResponse })),
-    postGif: vi.fn(async () => ({ ...okResponse })),
+    postFile: vi.fn(async () => ({ ...okResponse })),
+    postUrl: vi.fn(async () => ({ ...okResponse })),
     ...impl,
 });
 
@@ -85,23 +84,24 @@ describe('withRetries', () => {
 
 describe('attemptUpload', () => {
     it('uploads a photo URL without retries on success', async () => {
-        const postPhotoUrl = vi.fn(async () => ({ ...okResponse }));
+        const postUrl = vi.fn(async () => ({ ...okResponse }));
         const outcome = await attemptUpload(
             makeTask(),
-            makeEndpoint({ postPhotoUrl }),
+            makeEndpoint({ postUrl }),
             async () => null,
             { delayForAttempt: () => 0 },
         );
         expect(outcome).toEqual({
             outcome: 'complete',
             hash: 'h1',
+            uploadId: 'u1',
             retries: 0,
         });
-        expect(postPhotoUrl).toHaveBeenCalledTimes(1);
+        expect(postUrl).toHaveBeenCalledTimes(1);
     });
 
     it('reports duplicates with the server hash', async () => {
-        const postGif = vi.fn(
+        const postUrl = vi.fn(
             async () =>
                 ({
                     status: 'duplicate',
@@ -110,7 +110,7 @@ describe('attemptUpload', () => {
         );
         const outcome = await attemptUpload(
             makeTask({ type: 'gif', url: 'https://example.test/a.gif' }),
-            makeEndpoint({ postGif }),
+            makeEndpoint({ postUrl }),
             async () => null,
             { delayForAttempt: () => 0 },
         );
@@ -122,7 +122,7 @@ describe('attemptUpload', () => {
     });
 
     it('treats server errors as terminal without retrying', async () => {
-        const postPhotoUrl = vi.fn(
+        const postUrl = vi.fn(
             async () =>
                 ({
                     status: 'error',
@@ -131,65 +131,66 @@ describe('attemptUpload', () => {
         );
         const outcome = await attemptUpload(
             makeTask(),
-            makeEndpoint({ postPhotoUrl }),
+            makeEndpoint({ postUrl }),
             async () => null,
             { delayForAttempt: () => 0 },
         );
         expect(outcome).toEqual({ outcome: 'failed', retries: 0 });
-        expect(postPhotoUrl).toHaveBeenCalledTimes(1);
+        expect(postUrl).toHaveBeenCalledTimes(1);
     });
 
-    it('retries thrown errors and uploads the file blob', async () => {
+    it('retries thrown errors and uploads the file bytes', async () => {
         const blob = new Blob(['pixels'], { type: 'image/jpeg' });
-        const postPhoto = vi.fn(async (_body: FormData) => ({
+        const postFile = vi.fn(async (_blob: Blob) => ({
             ...okResponse,
         }));
         let calls = 0;
-        const bodies: FormData[] = [];
-        const flaky = vi.fn(async (body: FormData) => {
+        const bodies: Blob[] = [];
+        const flaky = vi.fn(async (body: Blob) => {
             calls += 1;
             if (calls === 1) throw new Error('timeout');
             bodies.push(body);
-            return postPhoto(body);
+            return postFile(body);
         });
         const outcome = await attemptUpload(
             makeTask({ type: 'photoFile' }),
-            makeEndpoint({ postPhoto: flaky as never }),
+            makeEndpoint({ postFile: flaky as never }),
             async () => blob,
             { maxRetries: 3, delayForAttempt: () => 0 },
         );
         expect(outcome).toEqual({
             outcome: 'complete',
             hash: 'h1',
+            uploadId: 'u1',
             retries: 1,
         });
         expect(bodies).toHaveLength(1);
-        expect(bodies[0]!.get('upload')).toBeInstanceOf(Blob);
+        expect(bodies[0]).toBeInstanceOf(Blob);
     });
 
     it('fails after the retry cap without further attempts', async () => {
-        const postPhotoUrl = vi.fn(async () => {
+        const postUrl = vi.fn(async () => {
             throw new Error('down');
         });
         const outcome = await attemptUpload(
             makeTask(),
-            makeEndpoint({ postPhotoUrl }),
+            makeEndpoint({ postUrl }),
             async () => null,
             { maxRetries: 3, delayForAttempt: () => 0 },
         );
         expect(outcome).toEqual({ outcome: 'failed', retries: 3 });
-        expect(postPhotoUrl).toHaveBeenCalledTimes(4);
+        expect(postUrl).toHaveBeenCalledTimes(4);
     });
 
     it('fails fast when the file blob is gone', async () => {
-        const postPhoto = vi.fn(async () => ({ ...okResponse }));
+        const postFile = vi.fn(async () => ({ ...okResponse }));
         const outcome = await attemptUpload(
             makeTask({ type: 'photoFile' }),
-            makeEndpoint({ postPhoto }),
+            makeEndpoint({ postFile }),
             async () => null,
             { delayForAttempt: () => 0 },
         );
         expect(outcome).toEqual({ outcome: 'failed', retries: 0 });
-        expect(postPhoto).not.toHaveBeenCalled();
+        expect(postFile).not.toHaveBeenCalled();
     });
 });

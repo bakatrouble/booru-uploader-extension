@@ -1,6 +1,7 @@
 import { type IDBPDatabase, openDB } from 'idb';
 import ky from 'ky';
 import { uuidv7 } from 'uuidv7';
+import { getApiRoot, normalizeApiRoot } from '@/utils/apiRoot';
 import { ContextMenuManager } from '@/utils/context-menu';
 import { NotificationLevel } from '@/utils/enums';
 import { isDev } from '@/utils/env';
@@ -39,6 +40,74 @@ export type {
     UploadResponse,
     UploadTask,
 } from './types';
+
+/**
+ * Interprets a raw upload HTTP response against the channel-helper API:
+ * 200 carries `UploadResponse`; 400 either repeats the `UploadResponse`
+ * shape with `status: "duplicate"` (hash dedupe, empty `upload_id`) or an
+ * `ErrorBody`. Anything else is transient and retried via throw.
+ */
+export const parseUploadResponse = async (
+    response: Response,
+): Promise<UploadResponse> => {
+    let body: unknown = null;
+    try {
+        body = await response.json();
+    } catch {
+        body = null;
+    }
+    const record =
+        typeof body === 'object' && body !== null
+            ? (body as Record<string, unknown>)
+            : {};
+    if (response.status === 200) {
+        if (record.status === 'ok') {
+            return {
+                status: 'ok',
+                hash:
+                    typeof record.hash === 'string'
+                        ? (record.hash as string)
+                        : undefined,
+                upload_id:
+                    typeof record.upload_id === 'string'
+                        ? (record.upload_id as string)
+                        : '',
+            };
+        }
+        if (record.status === 'duplicate') {
+            return {
+                status: 'duplicate',
+                hash:
+                    typeof record.hash === 'string'
+                        ? (record.hash as string)
+                        : '',
+            };
+        }
+        return {
+            status: 'error',
+            message: 'Unexpected upload response',
+        };
+    }
+    if (response.status === 400) {
+        if (record.status === 'duplicate') {
+            return {
+                status: 'duplicate',
+                hash:
+                    typeof record.hash === 'string'
+                        ? (record.hash as string)
+                        : '',
+            };
+        }
+        return {
+            status: 'error',
+            message:
+                typeof record.message === 'string'
+                    ? (record.message as string)
+                    : `Upload rejected (HTTP 400)`,
+        };
+    }
+    throw new Error(`Upload failed: HTTP ${response.status}`);
+};
 
 export class Uploader {
     queuedTasks = new Queue<UploadTask>();
@@ -114,13 +183,16 @@ export class Uploader {
         this.worker();
     }
 
-    async getHashes(endpoint: string) {
-        if (this.imageHashes[endpoint]) return;
-        this.imageHashes[endpoint] = new Set();
-        const response: { hashes: string[] } = await this.getKyClient(endpoint)
+    async getHashes(apiKey: string) {
+        if (this.imageHashes[apiKey]) return;
+        this.imageHashes[apiKey] = new Set();
+        const client = await this.getAuthedClient(apiKey);
+        const response: { hashes?: string[] } = await client
             .get('hashes')
             .json();
-        this.imageHashes[endpoint] = new Set(response.hashes);
+        this.imageHashes[apiKey] = new Set(
+            Array.isArray(response.hashes) ? response.hashes : [],
+        );
     }
 
     /**
@@ -139,20 +211,32 @@ export class Uploader {
         }
     }
 
-    async getHash(endpoint: string, hash: string) {
-        const response: { exists: boolean } = await this.getKyClient(endpoint)
+    async getHash(apiKey: string, hash: string) {
+        const client = await this.getAuthedClient(apiKey);
+        const response: { exists?: boolean } = await client
             .get(`hashes/${hash}`)
             .json();
-        if (response.exists) {
-            this.imageHashes[endpoint]?.add(hash);
+        const exists = response.exists === true;
+        if (exists) {
+            this.imageHashes[apiKey]?.add(hash);
         } else {
-            this.imageHashes[endpoint]?.delete(hash);
+            this.imageHashes[apiKey]?.delete(hash);
         }
-        return response.exists;
+        return exists;
     }
 
     async handleMessage(message: ExternalMessage, tabId?: number) {
         if (message.type !== 'upload') return;
+
+        // Pre-migration messages carried `endpoint` (a per-destination base
+        // URL); the new shape carries `apiKey` against the global API root.
+        const apiKey =
+            (message as { apiKey?: unknown }).apiKey ??
+            (message as { endpoint?: unknown }).endpoint;
+        if (typeof apiKey !== 'string' || !apiKey) {
+            console.error('Upload rejected: destination has no API key');
+            return {};
+        }
 
         let notificationId: string | undefined;
         if (tabId) {
@@ -175,14 +259,14 @@ export class Uploader {
         try {
             await this.ensureDb();
             try {
-                await this.getHashes(message.endpoint);
+                await this.getHashes(apiKey);
             } catch (e) {
                 console.error('Error fetching hashes:', e);
             }
 
             const base = {
                 id: uuidv7(),
-                endpoint: message.endpoint,
+                apiKey,
                 retries: 0,
                 status: 'queued' as const,
             };
@@ -193,18 +277,13 @@ export class Uploader {
                 queuedTasks: this.queuedTasks,
                 processedTasks: this.processedTasks,
                 computeHash: (blob) => this.computeHash(blob),
-                getHash: (endpoint, hash) => this.getHash(endpoint, hash),
+                getHash: (key, hash) => this.getHash(key, hash),
             };
             switch (message.method) {
                 case 'photoBase64':
                 case 'photoArrayBuffer': {
                     const blob = await normalizePhotoInput(message);
-                    result = await enqueuePhotoFile(
-                        intake,
-                        base,
-                        blob,
-                        message.endpoint,
-                    );
+                    result = await enqueuePhotoFile(intake, base, blob, apiKey);
                     break;
                 }
                 case 'photoUrl':
@@ -295,6 +374,7 @@ export class Uploader {
                     );
                     if (removed) {
                         await deleteStoredBlobs(this.db, removed.id);
+                        await this.deleteRemoteTask(removed);
                     }
                     this.sendUpdateToPorts();
                     break;
@@ -316,10 +396,16 @@ export class Uploader {
         });
     }
 
-    getKyClient(endpoint: string) {
+    getKyClient(apiRoot: string, apiKey: string) {
         return ky.extend({
-            prefix: `${endpoint}`,
+            prefix: normalizeApiRoot(apiRoot),
+            headers: { 'x-key': apiKey },
         });
+    }
+
+    /** Same client against the currently configured global API root. */
+    async getAuthedClient(apiKey: string) {
+        return this.getKyClient(await getApiRoot(), apiKey);
     }
 
     async computeHash(image: Blob): Promise<string> {
@@ -328,24 +414,47 @@ export class Uploader {
         return result;
     }
 
-    private makeUploadEndpoint(endpoint: string): UploadEndpoint {
-        const client = this.getKyClient(endpoint);
-        const post = (
+    private makeUploadEndpoint(apiKey: string): UploadEndpoint {
+        const post = async (
             path: string,
-            options: { body?: FormData; json?: unknown },
-        ): Promise<UploadResponse> =>
-            client
-                .post(path, {
-                    ...options,
-                    throwHttpErrors: false,
-                    timeout: UPLOAD_TIMEOUT_MS,
-                })
-                .json<UploadResponse>();
-        return {
-            postPhoto: (body) => post('photo', { body }),
-            postPhotoUrl: (url) => post('photo', { json: { url } }),
-            postGif: (url) => post('gif', { json: { url } }),
+            options: { body?: Blob; json?: unknown },
+        ): Promise<UploadResponse> => {
+            const client = await this.getAuthedClient(apiKey);
+            const headers =
+                options.body != null
+                    ? {
+                          'content-type':
+                              (options.body as Blob).type ||
+                              'application/octet-stream',
+                      }
+                    : undefined;
+            const response = await client.post(path, {
+                ...options,
+                ...(headers ? { headers } : {}),
+                throwHttpErrors: false,
+                timeout: UPLOAD_TIMEOUT_MS,
+            });
+            return parseUploadResponse(response);
         };
+        return {
+            postFile: (blob) => post('upload', { body: blob }),
+            postUrl: (url) => post('upload-url', { json: { url } }),
+        };
+    }
+
+    /**
+     * Drops the server-side task (and any post made from it). Best
+     * effort: local removal already happened, so failures only log.
+     */
+    async deleteRemoteTask(task: UploadTask): Promise<void> {
+        if (!task.uploadId || !task.apiKey) return;
+        try {
+            await (await this.getAuthedClient(task.apiKey))
+                .delete('delete', { json: { upload_id: task.uploadId } })
+                .json();
+        } catch (e) {
+            console.error('Error deleting remote task:', e);
+        }
     }
 
     async worker() {
@@ -366,18 +475,21 @@ export class Uploader {
             });
 
             try {
-                const { outcome, hash, retries } = await attemptUpload(
-                    task,
-                    this.makeUploadEndpoint(task.endpoint),
-                    async () => (await this.db?.get('images', task.id)) ?? null,
-                    { maxRetries: MAX_UPLOAD_RETRIES },
-                );
+                const { outcome, hash, uploadId, retries } =
+                    await attemptUpload(
+                        task,
+                        this.makeUploadEndpoint(task.apiKey),
+                        async () =>
+                            (await this.db?.get('images', task.id)) ?? null,
+                        { maxRetries: MAX_UPLOAD_RETRIES },
+                    );
                 task.retries = retries;
                 if (outcome === 'duplicate') {
-                    if (hash) this.imageHashes[task.endpoint]?.add(hash);
+                    if (hash) this.imageHashes[task.apiKey]?.add(hash);
                     task.status = 'duplicate';
                 } else if (outcome === 'complete') {
-                    if (hash) this.imageHashes[task.endpoint]?.add(hash);
+                    if (hash) this.imageHashes[task.apiKey]?.add(hash);
+                    if (uploadId) task.uploadId = uploadId;
                     task.status = 'complete';
                 } else {
                     task.status = 'failed';

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isValidEndpointUrl, moveUploadLink } from '@/utils/uploadLinks';
+import {
+    isValidEndpointUrl,
+    moveUploadLink,
+    normalizeUploadLinks,
+} from '@/utils/uploadLinks';
 
 describe('moveUploadLink', () => {
     it('moves an item up and down', () => {
@@ -22,6 +26,42 @@ describe('moveUploadLink', () => {
         expect(moveUploadLink(list, -1, 1)).toBe(false);
         expect(moveUploadLink(list, 5, -1)).toBe(false);
         expect(list).toEqual(['a']);
+    });
+});
+
+describe('normalizeUploadLinks', () => {
+    it('drops the legacy url field and keeps the api key', () => {
+        const legacy = [
+            {
+                id: 'l1',
+                name: 'First',
+                shortName: 'f',
+                url: 'https://one.test/hook',
+                hotkey: [],
+            },
+        ] as unknown as UploadLink[];
+        expect(normalizeUploadLinks(legacy)).toEqual([
+            {
+                id: 'l1',
+                name: 'First',
+                shortName: 'f',
+                apiKey: '',
+                hotkey: [],
+            },
+        ]);
+    });
+
+    it('keeps current entries untouched', () => {
+        const current: UploadLink[] = [
+            {
+                id: 'l1',
+                name: 'First',
+                shortName: 'f',
+                apiKey: 'key-one',
+                hotkey: [],
+            },
+        ];
+        expect(normalizeUploadLinks(current)).toEqual(current);
     });
 });
 

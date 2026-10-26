@@ -30,12 +30,18 @@ const { mutate: sendTestImage, isPending: isTestImageSending } = useMutation({
         }
         const { loadTestImage } = await import('@/entrypoints/popup/testImage');
         const { buffer, mimeType } = await loadTestImage();
+        const { uploadLinks } = (await browser.storage.sync.get(
+            'uploadLinks',
+        )) as { uploadLinks?: UploadLink[] };
         return await browser.runtime.sendMessage({
             type: 'upload',
             method: 'photoArrayBuffer',
             data: buffer,
             mimeType,
-            endpoint: import.meta.env.VITE_TEST_ENDPOINT,
+            apiKey:
+                uploadLinks?.[0]?.apiKey ||
+                import.meta.env.VITE_TEST_API_KEY ||
+                '',
         });
     },
 });

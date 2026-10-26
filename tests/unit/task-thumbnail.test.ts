@@ -23,7 +23,7 @@ const stubUrls = () => {
 const makeFileTask = (): UploadTask =>
     ({
         id: 'a',
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 0,
         status: 'complete',
         type: 'photoFile',

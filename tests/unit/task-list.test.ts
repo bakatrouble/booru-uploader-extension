@@ -17,7 +17,7 @@ const makeTask = (
 ): UploadTask =>
     ({
         id,
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 0,
         status,
         type,

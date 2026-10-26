@@ -40,7 +40,7 @@ const fakePort = {
 const queued: UploadTask[] = [
     {
         id: 't-queued',
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 0,
         status: 'queued',
         type: 'photoUrl',
@@ -48,7 +48,7 @@ const queued: UploadTask[] = [
     },
     {
         id: 't-processing',
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 0,
         status: 'processing',
         type: 'photoUrl',
@@ -59,7 +59,7 @@ const queued: UploadTask[] = [
 const processed: UploadTask[] = [
     {
         id: 't-complete',
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 0,
         status: 'complete',
         type: 'photoUrl',
@@ -67,7 +67,7 @@ const processed: UploadTask[] = [
     },
     {
         id: 't-failed',
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 2,
         status: 'failed',
         type: 'photoUrl',

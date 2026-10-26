@@ -13,7 +13,8 @@ export const moveUploadLink = <T>(
 
 /**
  * Upload destinations must be absolute http(s) URLs — anything else
- * fails at upload time with an unhelpful error.
+ * fails at upload time with an unhelpful error. Used for the global
+ * API root setting.
  */
 export const isValidEndpointUrl = (value: string): boolean => {
     try {
@@ -23,3 +24,17 @@ export const isValidEndpointUrl = (value: string): boolean => {
         return false;
     }
 };
+
+/**
+ * Drops the pre-migration `url` field: destinations are now just an API
+ * key against the shared global API root.
+ */
+export const normalizeUploadLinks = (links: UploadLink[]): UploadLink[] =>
+    links.map((link) => {
+        const raw = link as unknown as Record<string, unknown>;
+        const apiKey =
+            typeof raw.apiKey === 'string' ? (raw.apiKey as string) : '';
+        const { url: _dropped, ...rest } = raw;
+        void _dropped;
+        return { ...(rest as unknown as UploadLink), apiKey };
+    });

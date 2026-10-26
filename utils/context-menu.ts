@@ -1,5 +1,6 @@
 import type { Uploader } from '../entrypoints/background/uploader';
 import { NotificationLevel } from './enums';
+import { normalizeUploadLinks } from './uploadLinks';
 
 export const MenuIds = {
     Prefix: 'send-to-tg-',
@@ -32,12 +33,13 @@ export class ContextMenuManager {
             }
         }
 
-        this.uploadLinks =
+        this.uploadLinks = normalizeUploadLinks(
             (
                 (await browser.storage.sync.get('uploadLinks')) as {
                     uploadLinks?: UploadLink[];
                 }
-            ).uploadLinks || [];
+            ).uploadLinks || [],
+        );
 
         browser.menus.create({
             id: MenuIds.Root,
@@ -84,13 +86,13 @@ export class ContextMenuManager {
                 await browser.runtime.openOptionsPage();
                 return;
             } else if (menuItemId.startsWith(MenuIds.Destination)) {
-                const url = this.uploadLinks.find(
+                const apiKey = this.uploadLinks.find(
                     (uploadLink: UploadLink) =>
                         uploadLink.id ===
                         menuItemId.replace(MenuIds.Destination, ''),
-                )?.url;
+                )?.apiKey;
 
-                if (url) {
+                if (apiKey) {
                     let failure: unknown;
                     try {
                         const buffer: ArrayBuffer =
@@ -108,7 +110,7 @@ export class ContextMenuManager {
                                 method: 'photoArrayBuffer',
                                 data: buffer,
                                 mimeType: 'image/jpeg',
-                                endpoint: url,
+                                apiKey,
                             },
                             tab.id,
                         );

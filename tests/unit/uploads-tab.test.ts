@@ -8,7 +8,7 @@ import { stubBrowser } from './setup';
 const makeTask = (id: string, status: UploadTask['status']): UploadTask =>
     ({
         id,
-        endpoint: 'https://example.test',
+        apiKey: 'test-key',
         retries: 0,
         status,
         type: 'photoUrl',

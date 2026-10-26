@@ -27,14 +27,17 @@ vi.mock('idb', () => ({
 
 import ky from 'ky';
 import type { UploadTask } from '@/entrypoints/background/uploader';
-import { Uploader } from '@/entrypoints/background/uploader';
+import {
+    parseUploadResponse,
+    Uploader,
+} from '@/entrypoints/background/uploader';
 import { Queue } from '@/utils/queue';
 
 const mockedExtend = vi.mocked(ky.extend);
 
 const makeTask = (id: string, status: UploadTask['status']): UploadTask => ({
     id,
-    endpoint: 'https://example.test',
+    apiKey: 'test-key',
     retries: 0,
     status,
     type: 'photoUrl',
@@ -42,11 +45,12 @@ const makeTask = (id: string, status: UploadTask['status']): UploadTask => ({
 });
 
 describe('Uploader.getKyClient', () => {
-    it('scopes the client to the task endpoint', () => {
+    it('scopes the client to the api root with the x-key header', () => {
         const uploader = Object.create(Uploader.prototype) as Uploader;
-        uploader.getKyClient('https://example.test/');
+        uploader.getKyClient('http://127.0.0.1:8080/', 'test-key');
         expect(mockedExtend).toHaveBeenCalledWith({
-            prefix: 'https://example.test/',
+            prefix: 'http://127.0.0.1:8080',
+            headers: { 'x-key': 'test-key' },
         });
     });
 });
@@ -65,32 +69,26 @@ describe('Uploader hash cache', () => {
         }));
         mockedExtend.mockReturnValue({ get } as never);
 
-        await uploader.getHashes('https://example.test');
-        await uploader.getHashes('https://example.test');
+        await uploader.getHashes('test-key');
+        await uploader.getHashes('test-key');
 
         expect(get).toHaveBeenCalledTimes(1);
         expect(get).toHaveBeenCalledWith('hashes');
-        expect(uploader.imageHashes['https://example.test']).toEqual(
+        expect(uploader.imageHashes['test-key']).toEqual(
             new Set(['aaa', 'bbb']),
         );
     });
 
     it('getHash records hits and evicts misses', async () => {
-        uploader.imageHashes['https://example.test'] = new Set(['aaa']);
+        uploader.imageHashes['test-key'] = new Set(['aaa']);
         const get = vi.fn((url: string) => ({
             json: async () => ({ exists: url === 'hashes/aaa' }),
         }));
         mockedExtend.mockReturnValue({ get } as never);
 
-        await expect(
-            uploader.getHash('https://example.test', 'aaa'),
-        ).resolves.toBe(true);
-        await expect(
-            uploader.getHash('https://example.test', 'zzz'),
-        ).resolves.toBe(false);
-        expect(uploader.imageHashes['https://example.test']).toEqual(
-            new Set(['aaa']),
-        );
+        await expect(uploader.getHash('test-key', 'aaa')).resolves.toBe(true);
+        await expect(uploader.getHash('test-key', 'zzz')).resolves.toBe(false);
+        expect(uploader.imageHashes['test-key']).toEqual(new Set(['aaa']));
     });
 });
 
@@ -122,7 +120,7 @@ describe('Uploader.handleExternalMessage', () => {
             .mockResolvedValue({});
         const message = {
             type: 'upload',
-            endpoint: 'https://example.test',
+            apiKey: 'test-key',
             method: 'photoUrl',
             url: 'https://example.test/i.jpg',
         } as never;
@@ -301,5 +299,56 @@ describe('Uploader.sendUpdateToPorts', () => {
         };
         expect(a.postMessage).toHaveBeenCalledWith(expected);
         expect(b.postMessage).toHaveBeenCalledWith(expected);
+    });
+});
+
+describe('parseUploadResponse', () => {
+    const jsonResponse = (status: number, body: unknown) =>
+        ({
+            status,
+            json: async () => body,
+        }) as unknown as Response;
+
+    it('reads ok responses with the server upload id', async () => {
+        await expect(
+            parseUploadResponse(
+                jsonResponse(200, {
+                    status: 'ok',
+                    hash: 'h1',
+                    upload_id: 'u1',
+                }),
+            ),
+        ).resolves.toEqual({ status: 'ok', hash: 'h1', upload_id: 'u1' });
+    });
+
+    it('reads 200 duplicates', async () => {
+        await expect(
+            parseUploadResponse(
+                jsonResponse(200, { status: 'duplicate', hash: 'known' }),
+            ),
+        ).resolves.toEqual({ status: 'duplicate', hash: 'known' });
+    });
+
+    it('maps 400 duplicates to duplicate, other 400s to error', async () => {
+        await expect(
+            parseUploadResponse(
+                jsonResponse(400, {
+                    status: 'duplicate',
+                    hash: 'known',
+                    upload_id: '',
+                }),
+            ),
+        ).resolves.toEqual({ status: 'duplicate', hash: 'known' });
+        await expect(
+            parseUploadResponse(
+                jsonResponse(400, { status: 'error', message: 'bad file' }),
+            ),
+        ).resolves.toEqual({ status: 'error', message: 'bad file' });
+    });
+
+    it('retries unexpected HTTP statuses by throwing', async () => {
+        await expect(
+            parseUploadResponse(jsonResponse(500, { status: 'error' })),
+        ).rejects.toThrow('HTTP 500');
     });
 });
