@@ -54,6 +54,10 @@ declare global {
         id: string;
     }
 
+    interface RemoveNotificationOptions {
+        id: string;
+    }
+
     interface NotificationOptions {
         level: NotificationLevel;
         title?: string;
@@ -68,6 +72,10 @@ declare global {
         | {
               type: 'update-notification';
               options: UpdateNotificationOptions;
+          }
+        | {
+              type: 'remove-notification';
+              options: RemoveNotificationOptions;
           };
 
     interface UploadLink {

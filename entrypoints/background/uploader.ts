@@ -262,6 +262,17 @@ export class Uploader {
             );
         } else if (message.type === 'updateContextMenu') {
             return this.contextMenuManager.init();
+        } else if (
+            message.type === 'notification' ||
+            message.type === 'update-notification' ||
+            message.type === 'remove-notification'
+        ) {
+            // Relay to the notifications content script living in the
+            // sender's tab: cross-extension messages never reach its
+            // onMessage listener directly. Returns pushNotification's id
+            // for 'notification'.
+            if (sender?.tab?.id === undefined) return;
+            return browser.tabs.sendMessage(sender.tab.id, message);
         }
     }
 

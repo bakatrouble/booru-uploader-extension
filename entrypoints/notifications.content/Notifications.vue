@@ -8,15 +8,19 @@ const notifications = ref<NotificationEntry[]>([]);
 
 const NOTIFICATION_DURATION = 5000;
 
+const removeNotificationById = (id: string): void => {
+    notifications.value = notifications.value.filter(
+        (item) => item.id !== id,
+    );
+}
+
 const planNotificationRemoval = (id: string) => {
     setTimeout(() => {
-        notifications.value = notifications.value.filter(
-            (item) => item.id !== id,
-        );
+        removeNotificationById(id);
     }, NOTIFICATION_DURATION);
 };
 
-const pushNotification = async (options: NotificationOptions) => {
+const pushNotification = (options: NotificationOptions) => {
     const id = uuidv4();
     notifications.value.push({
         ...options,
@@ -29,7 +33,7 @@ const pushNotification = async (options: NotificationOptions) => {
     return id;
 };
 
-const updateNotification = async (options: UpdateNotificationOptions) => {
+const updateNotification = (options: UpdateNotificationOptions) => {
     const idx = notifications.value.findIndex((n) => n.id === options.id);
     if (idx !== -1) {
         const entry = notifications.value[idx]!;
@@ -42,11 +46,17 @@ const updateNotification = async (options: UpdateNotificationOptions) => {
     }
 };
 
+const removeNotification = async (options: RemoveNotificationOptions) => {
+    removeNotificationById(options.id);
+}
+
 const messageHandler = (message: RuntimeMessage) => {
     if (message.type === 'notification') {
         return pushNotification(message.options);
     } else if (message.type === 'update-notification') {
         return updateNotification(message.options);
+    } else if (message.type === 'remove-notification') {
+        return removeNotification(message.options);
     }
 };
 
@@ -57,6 +67,7 @@ onMounted(() => {
 defineExpose({
     pushNotification,
     updateNotification,
+    removeNotification,
 });
 </script>
 

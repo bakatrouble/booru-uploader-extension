@@ -39,7 +39,19 @@ export type ExternalMessage =
                 method: 'gif';
                 url: string;
             }
-      ));
+      ))
+    | {
+          type: 'notification';
+          options: NotificationOptions;
+      }
+    | {
+          type: 'update-notification';
+          options: UpdateNotificationOptions;
+      }
+    | {
+          type: 'remove-notification';
+          options: RemoveNotificationOptions;
+      };
 
 export type UploadTask = {
     id: string;
