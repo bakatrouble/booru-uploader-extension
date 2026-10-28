@@ -1,3 +1,17 @@
 {
-    "extends": "./.wxt/tsconfig.json"
+    "extends": "./.wxt/tsconfig.json",
+    "compilerOptions": {
+        // Keep the base aliases in sync with ./.wxt/tsconfig.json (whose
+        // paths are relative to .wxt/, hence "." here).
+        "paths": {
+            "@": ["."],
+            "@/*": ["./*"],
+            "~": ["."],
+            "~/*": ["./*"],
+            "@@": ["."],
+            "@@/*": ["./*"],
+            "~~": ["."],
+            "~~/*": ["./*"]
+        }
+    }
 }

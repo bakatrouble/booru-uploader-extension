@@ -26,12 +26,24 @@ export const computeHashWithWorker = (
                     reject(new Error('Hash computation timed out'));
                 }, timeoutMs);
                 const listener = (
-                    e: MessageEvent<{ id: string; hash: string }>,
+                    e: MessageEvent<{
+                        id: string;
+                        hash?: string;
+                        error?: string;
+                    }>,
                 ) => {
                     if (e.data.id !== id) return;
                     clearTimeout(timer);
-                    resolve(e.data.hash);
                     worker.removeEventListener('message', listener);
+                    // Surface worker failures (bad bytes, wasm init) with
+                    // their real cause instead of a misleading timeout.
+                    if (typeof e.data.error === 'string') {
+                        reject(new Error(e.data.error));
+                    } else if (typeof e.data.hash === 'string') {
+                        resolve(e.data.hash);
+                    } else {
+                        reject(new Error('Hash worker returned no hash'));
+                    }
                 };
                 worker.addEventListener('message', listener);
                 // The wasm glue requires a Uint8Array view — a bare

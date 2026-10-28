@@ -127,7 +127,25 @@ describe('Uploader.handleExternalMessage', () => {
         await uploader.handleExternalMessage(message, {
             tab: { id: 7 },
         } as never);
-        expect(spy).toHaveBeenCalledWith(message, 7);
+        expect(spy).toHaveBeenCalledWith(message, 7, undefined);
+        spy.mockRestore();
+    });
+
+    it('routes uploads to handleMessage with the sender frame id', async () => {
+        const spy = vi
+            .spyOn(Uploader.prototype, 'handleMessage')
+            .mockResolvedValue({});
+        const message = {
+            type: 'upload',
+            apiKey: 'test-key',
+            method: 'photoUrl',
+            url: 'https://example.test/i.jpg',
+        } as never;
+        await uploader.handleExternalMessage(message, {
+            tab: { id: 7 },
+            frameId: 2,
+        } as never);
+        expect(spy).toHaveBeenCalledWith(message, 7, 2);
         spy.mockRestore();
     });
 });

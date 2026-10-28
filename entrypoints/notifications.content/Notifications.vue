@@ -9,10 +9,8 @@ const notifications = ref<NotificationEntry[]>([]);
 const NOTIFICATION_DURATION = 5000;
 
 const removeNotificationById = (id: string): void => {
-    notifications.value = notifications.value.filter(
-        (item) => item.id !== id,
-    );
-}
+    notifications.value = notifications.value.filter((item) => item.id !== id);
+};
 
 const planNotificationRemoval = (id: string) => {
     setTimeout(() => {
@@ -21,7 +19,7 @@ const planNotificationRemoval = (id: string) => {
 };
 
 const pushNotification = (options: NotificationOptions) => {
-    const id = uuidv4();
+    const id = options.id ?? uuidv4();
     notifications.value.push({
         ...options,
         visible: true,
@@ -48,7 +46,7 @@ const updateNotification = (options: UpdateNotificationOptions) => {
 
 const removeNotification = async (options: RemoveNotificationOptions) => {
     removeNotificationById(options.id);
-}
+};
 
 const messageHandler = (message: RuntimeMessage) => {
     if (message.type === 'notification') {
@@ -114,6 +112,7 @@ defineExpose({
             fixed
             right-4
             bottom-4
+            w-48
             transition-all;
         /* Do not use var() here, with or without a fallback: the build
            normalizes `var(--base-z-index, ...)` against the @theme
@@ -129,7 +128,6 @@ defineExpose({
         @apply
             p-2
             rounded-default
-            bg-background
             transition-all
             mt-2
             text-gray-50
@@ -155,6 +153,7 @@ defineExpose({
 
         &.list-leave-active {
             position: absolute;
+            right: 0;
         }
     }
 }

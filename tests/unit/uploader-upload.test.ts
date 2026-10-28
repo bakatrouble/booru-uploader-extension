@@ -200,18 +200,35 @@ describe('Uploader.handleMessage photo uploads', () => {
             7,
         );
         await vi.waitFor(() =>
-            expect(stubBrowser.tabs.sendMessage).toHaveBeenCalledWith(7, {
-                type: 'notification',
-                options: {
-                    level: 'loading',
-                    message: 'Uploading picture...',
-                },
-            }),
+            expect(stubBrowser.tabs.sendMessage).toHaveBeenCalledWith(
+                7,
+                expect.objectContaining({ type: 'notification' }),
+            ),
         );
 
         release();
         await pending;
         expect(uploader.queuedTasks.items).toHaveLength(1);
+    });
+
+    it('scopes notifications to the sender frame when known', async () => {
+        await uploader.handleMessage(
+            {
+                type: 'upload',
+                apiKey: 'test-key',
+                method: 'photoUrl',
+                url: 'https://example.test/i.jpg',
+            } as never,
+            7,
+            3,
+        );
+        for (const call of stubBrowser.tabs.sendMessage.mock.calls) {
+            expect(call[0]).toBe(7);
+            expect(call[2]).toEqual({ frameId: 3 });
+        }
+        expect(stubBrowser.tabs.sendMessage.mock.calls.length).toBeGreaterThan(
+            0,
+        );
     });
 
     it('waits for the database before storing anything', async () => {

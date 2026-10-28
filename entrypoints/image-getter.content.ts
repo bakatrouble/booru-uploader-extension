@@ -77,6 +77,9 @@ export default defineContentScript({
             } else if (type === 'getImageSelectorArrayBuffer') {
                 return messageHandlerSelectorBuffer(selector);
             }
+            // Not ours (e.g. notification traffic for the sibling content
+            // script): decline so this listener never claims the response.
+            return false;
         };
         browser.runtime.onMessage.addListener(listener);
     },

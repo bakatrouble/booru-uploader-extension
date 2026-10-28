@@ -67,8 +67,17 @@ export const enqueuePhotoFile = async (
     await storeThumbnail(ctx.db, base.id);
     const knownHashes = ctx.imageHashes[apiKey];
     if (knownHashes) {
-        const hash = await ctx.computeHash(blob);
+        let hash: string | null = null;
+        try {
+            hash = await ctx.computeHash(blob);
+        } catch (e) {
+            // Hashing is only a duplicate-check optimization: a wasm or
+            // decode failure must not block the upload itself. Queue the
+            // file and let the server decide.
+            console.error('Hash computation failed, skipping dedupe:', e);
+        }
         if (
+            hash !== null &&
             knownHashes.has(hash.toString()) &&
             (await ctx.getHash(apiKey, hash))
         ) {

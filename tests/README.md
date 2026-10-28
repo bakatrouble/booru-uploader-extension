@@ -117,3 +117,21 @@
 
 `playwright.config.ts` serves the harness on port 5200 (5199 is taken by
 another project on this machine).
+
+## Real-conditions Firefox coupling (`tests/e2e-firefox`, Playwright)
+
+`pnpm test:e2e:firefox` builds + zips both extensions, sideloads them as
+temporary add-ons in Playwright Firefox (via about:debugging, bypassing
+web-ext run's single-`--source-dir` limit — mozilla/web-ext#1107), and
+drives the real UI against a fake gallery + fake channel-helper API on
+127.0.0.1:18474 (the lightbox `local` adapter matches it via the
+`VITE_E2E_GALLERY_ORIGIN` build flag; port 8474 is taken on dev
+machines, so the harness defaults elsewhere):
+- no upload buttons before destinations are configured;
+- seeding destinations via the real options page makes them appear;
+- clicking upload on a not-yet-loaded image shows the waiting notice
+  immediately (before the 5s-delayed full image arrives), then clears it
+  and reports "Picture sent";
+- the server log proves the wire shape: `GET /hashes`, `POST /upload`
+  with octet-stream + `x-key`, `POST /upload-url` with `{url}` — and no
+  legacy `/photo` or `/gif` paths.

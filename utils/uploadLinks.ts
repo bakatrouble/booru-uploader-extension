@@ -29,8 +29,9 @@ export const isValidEndpointUrl = (value: string): boolean => {
  * Drops the pre-migration `url` field: destinations are now just an API
  * key against the shared global API root.
  */
-export const normalizeUploadLinks = (links: UploadLink[]): UploadLink[] =>
-    links.map((link) => {
+export const normalizeUploadLinks = (links_: UploadLink[] | string): UploadLink[] => {
+    let links: UploadLink[] = typeof links_ === 'string' ? JSON.parse(links_) : links_;
+    return links.map((link) => {
         const raw = link as unknown as Record<string, unknown>;
         const apiKey =
             typeof raw.apiKey === 'string' ? (raw.apiKey as string) : '';
@@ -38,3 +39,4 @@ export const normalizeUploadLinks = (links: UploadLink[]): UploadLink[] =>
         void _dropped;
         return { ...(rest as unknown as UploadLink), apiKey };
     });
+}

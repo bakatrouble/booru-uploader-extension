@@ -94,12 +94,24 @@ export class ContextMenuManager {
 
                 if (apiKey) {
                     let failure: unknown;
+                    // Scope to the clicked frame: targetElementId is only
+                    // valid there, and a tab-wide broadcast lets a sibling
+                    // frame's "no such element" rejection win the race.
+                    // (Firefox provides frameId at runtime; the type
+                    // package just doesn't declare it.)
+                    const frameId = (info as { frameId?: number }).frameId;
+                    const frameOpts =
+                        frameId !== undefined ? [{ frameId }] : [];
                     try {
                         const buffer: ArrayBuffer =
-                            await browser.tabs.sendMessage(tab.id, {
-                                type: 'getImageMenusArrayBuffer',
-                                targetElementId: info.targetElementId,
-                            });
+                            await browser.tabs.sendMessage(
+                                tab.id,
+                                {
+                                    type: 'getImageMenusArrayBuffer',
+                                    targetElementId: info.targetElementId,
+                                },
+                                ...frameOpts,
+                            );
                         console.log(
                             '[context menu background script] bytes:',
                             buffer?.byteLength,
@@ -113,6 +125,7 @@ export class ContextMenuManager {
                                 apiKey,
                             },
                             tab.id,
+                            frameId,
                         );
                     } catch (e) {
                         failure = e;
@@ -131,13 +144,17 @@ export class ContextMenuManager {
                             failure,
                         );
                         try {
-                            await browser.tabs.sendMessage(tab.id, {
-                                type: 'notification',
-                                options: {
-                                    level: NotificationLevel.Error,
-                                    message: `Upload failed: ${reason}`,
+                            await browser.tabs.sendMessage(
+                                tab.id,
+                                {
+                                    type: 'notification',
+                                    options: {
+                                        level: NotificationLevel.Error,
+                                        message: `Upload failed: ${reason}`,
+                                    },
                                 },
-                            });
+                                ...frameOpts,
+                            );
                         } catch {
                             // The tab cannot even show the notification.
                         }

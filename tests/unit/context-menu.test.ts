@@ -121,13 +121,18 @@ describe('ContextMenuManager.callback', () => {
             {
                 menuItemId: `${MenuIds.Destination}l1`,
                 targetElementId: 5,
+                frameId: 3,
             } as never,
             { id: 9 } as never,
         );
-        expect(stubBrowser.tabs.sendMessage).toHaveBeenCalledWith(9, {
-            type: 'getImageMenusArrayBuffer',
-            targetElementId: 5,
-        });
+        expect(stubBrowser.tabs.sendMessage).toHaveBeenCalledWith(
+            9,
+            {
+                type: 'getImageMenusArrayBuffer',
+                targetElementId: 5,
+            },
+            { frameId: 3 },
+        );
         expect(uploader.handleMessage).toHaveBeenCalledWith(
             {
                 type: 'upload',
@@ -137,6 +142,7 @@ describe('ContextMenuManager.callback', () => {
                 apiKey: 'key-one',
             },
             9,
+            3,
         );
     });
 
@@ -181,16 +187,21 @@ describe('ContextMenuManager.callback', () => {
             {
                 menuItemId: `${MenuIds.Destination}l1`,
                 targetElementId: 5,
+                frameId: 4,
             } as never,
             { id: 9 } as never,
         );
-        expect(stubBrowser.tabs.sendMessage).toHaveBeenCalledWith(9, {
-            type: 'notification',
-            options: {
-                level: 'error',
-                message: 'Upload failed: JPEG worker failed',
+        expect(stubBrowser.tabs.sendMessage).toHaveBeenCalledWith(
+            9,
+            {
+                type: 'notification',
+                options: {
+                    level: 'error',
+                    message: 'Upload failed: JPEG worker failed',
+                },
             },
-        });
+            { frameId: 4 },
+        );
     });
 
     it('registers the callback on the menus click event', async () => {

@@ -1,7 +1,7 @@
 {
     "name": "booru-uploader",
     "private": true,
-    "version": "1.4.6",
+    "version": "1.4.9",
     "type": "module",
     "scripts": {
         "dev": "pnpm build:worker && wxt",
@@ -19,7 +19,8 @@
         "test:unit": "vitest run",
         "test:e2e": "playwright test",
         "lint": "biome check .",
-        "typecheck": "pnpm build:worker && vue-tsc --noEmit"
+        "typecheck": "pnpm build:worker && vue-tsc --noEmit",
+        "test:e2e:firefox": "VITE_E2E_GALLERY_ORIGIN=127.0.0.1:18474 pnpm --dir ../booru-lightbox-extension build:firefox && pnpm build:firefox && E2E_PORT=18474 playwright test --config playwright.firefox.config.ts"
     },
     "dependencies": {
         "@mdi/js": "^7.4.47",

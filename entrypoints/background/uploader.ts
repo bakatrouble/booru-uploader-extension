@@ -225,7 +225,11 @@ export class Uploader {
         return exists;
     }
 
-    async handleMessage(message: ExternalMessage, tabId?: number) {
+    async handleMessage(
+        message: ExternalMessage,
+        tabId?: number,
+        frameId?: number,
+    ) {
         if (message.type !== 'upload') return;
 
         // Pre-migration messages carried `endpoint` (a per-destination base
@@ -238,16 +242,33 @@ export class Uploader {
             return {};
         }
 
-        let notificationId: string | undefined;
-        if (tabId) {
+        // Scope delivery to the sender's frame when known: tabs.sendMessage
+        // otherwise broadcasts to every frame, and the first response wins
+        // — sibling frames' listeners (or the image-getter content script,
+        // which declines with `false`) must not be able to claim it.
+        const sendOpts = frameId !== undefined ? { frameId } : undefined;
+
+        // Generate the id up-front instead of capturing it from the
+        // sendMessage response: the response channel is unreliable here —
+        // measured: the content script receives the message and returns a
+        // valid id, yet the sender's promise still resolves `undefined`
+        // (even single-listener). Frame scoping above narrows delivery;
+        // the sender-side id makes the completion update deterministic.
+        const notificationId: string | undefined = tabId ? uuidv7() : undefined;
+        if (tabId && notificationId) {
             try {
-                notificationId = await browser.tabs.sendMessage(tabId, {
-                    type: 'notification',
-                    options: {
-                        level: NotificationLevel.Loading,
-                        message: `Uploading ${message.method === 'gif' ? 'GIF' : 'picture'}...`,
+                await browser.tabs.sendMessage(
+                    tabId,
+                    {
+                        type: 'notification',
+                        options: {
+                            id: notificationId,
+                            level: NotificationLevel.Loading,
+                            message: `Uploading ${message.method === 'gif' ? 'GIF' : 'picture'}...`,
+                        },
                     },
-                });
+                    ...(sendOpts ? [sendOpts] : []),
+                );
             } catch (e) {
                 // The tab is gone or has no content script; upload anyway
                 // without progress feedback.
@@ -303,23 +324,31 @@ export class Uploader {
             }
             if (tabId && notificationId) {
                 if (result === 'duplicate') {
-                    await browser.tabs.sendMessage(tabId, {
-                        type: 'update-notification',
-                        options: {
-                            id: notificationId,
-                            level: NotificationLevel.Error,
-                            message: `Duplicate`,
+                    await browser.tabs.sendMessage(
+                        tabId,
+                        {
+                            type: 'update-notification',
+                            options: {
+                                id: notificationId,
+                                level: NotificationLevel.Error,
+                                message: `Duplicate`,
+                            },
                         },
-                    });
+                        ...(sendOpts ? [sendOpts] : []),
+                    );
                 } else {
-                    await browser.tabs.sendMessage(tabId, {
-                        type: 'update-notification',
-                        options: {
-                            id: notificationId,
-                            level: NotificationLevel.Success,
-                            message: `${message.method === 'gif' ? 'GIF' : 'Picture'} sent`,
+                    await browser.tabs.sendMessage(
+                        tabId,
+                        {
+                            type: 'update-notification',
+                            options: {
+                                id: notificationId,
+                                level: NotificationLevel.Success,
+                                message: `${message.method === 'gif' ? 'GIF' : 'Picture'} sent`,
+                            },
                         },
-                    });
+                        ...(sendOpts ? [sendOpts] : []),
+                    );
                 }
             }
             this.sendUpdateToPorts();
@@ -334,7 +363,11 @@ export class Uploader {
         sender: Browser.runtime.MessageSender,
     ) {
         if (message.type === 'upload') {
-            return this.handleMessage(message, sender?.tab?.id);
+            return this.handleMessage(
+                message,
+                sender?.tab?.id,
+                sender?.frameId,
+            );
         } else if (message.type === 'getUploadLinks') {
             return new Promise((resolve) =>
                 resolve(this.contextMenuManager.uploadLinks),
@@ -347,11 +380,17 @@ export class Uploader {
             message.type === 'remove-notification'
         ) {
             // Relay to the notifications content script living in the
-            // sender's tab: cross-extension messages never reach its
-            // onMessage listener directly. Returns pushNotification's id
-            // for 'notification'.
+            // sender's frame: cross-extension messages never reach its
+            // onMessage listener directly. Scoped to sender.frameId when
+            // known so sibling frames' listeners can't claim the response.
             if (sender?.tab?.id === undefined) return;
-            return browser.tabs.sendMessage(sender.tab.id, message);
+            return browser.tabs.sendMessage(
+                sender.tab.id,
+                message,
+                ...(sender.frameId !== undefined
+                    ? [{ frameId: sender.frameId }]
+                    : []),
+            );
         }
     }
 
